@@ -1,5 +1,20 @@
 # 更新日志
 
+## 未发布 — macOS 界面精简
+
+* macOS 日志统一添加本地时间毫秒级时间戳 `[YYYY-MM-DD HH:mm:ss.SSS]`，界面、复制及导出保持一致。
+* 移除窗口右上角的全部停止按钮、日志底部说明及侧栏“不提供担保”文字。
+* 修复日志在双向滚动区域中出现大块左侧留白的问题；自动跟随保持左对齐，保留长日志横向滚动。
+
+## 未发布 — 原生安装包
+
+* Windows 发布格式改为 Inno Setup `.exe` 安装程序，默认当前用户安装，提供快捷方式、原位更新和卸载，
+  卸载保留运行时日志与截图；MSVC 静态链接运行库，无需用户单独安装 Visual C++ Redistributable。
+* macOS 发布格式改为 `.dmg`，包含 `CRBot.app`、Applications 拖放入口及可选 `CLI` 文件夹。
+* CI 增加 Windows 安装/重复安装/卸载验证；macOS 实际挂载 DMG 验证签名、架构、模板及构建元数据。
+* CD 改为上传一个 Windows 安装程序和两个架构的 DMG，以及各自的 SHA256；不再发布 ZIP。
+  `VERSION`、Build 递增和预发布/正式版本命名规则保持不变。
+
 ## 未发布 — Windows / macOS CI 与 CD
 
 * 新增统一 GitHub Actions：功能分支 PR 到 `dev` 自动 CI，合并到 `dev` 自动预发布，

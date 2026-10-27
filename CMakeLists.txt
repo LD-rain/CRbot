@@ -48,6 +48,8 @@ add_custom_target(crbot_build_metadata
 
 if(MSVC)
     add_compile_options("/utf-8")
+    # Installed apps must run on PCs without Visual Studio / a separate VC CRT.
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
 # ---- 平台相关部分 ----

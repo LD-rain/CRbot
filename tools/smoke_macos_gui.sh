@@ -5,6 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_DIR="${1:-$ROOT/build}"
 [[ "$BUILD_DIR" = /* ]] || BUILD_DIR="$ROOT/$BUILD_DIR"
+bash "$ROOT/tools/smoke_macos_logs.sh" "$BUILD_DIR"
 TEST_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEST_DIR"' EXIT
 cp "$ROOT/tests/macos/fake_adb.py" "$TEST_DIR/adb"

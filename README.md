@@ -143,7 +143,14 @@ adb shell wm density 240
 
 > Windows 的 `tools/package.ps1` 只负责打包 Windows 版；macOS 使用 `tools/package_macos.sh`。
 
-## 打包预发布版
+## Windows 安装程序
+
+从 Releases 下载 `CRBot-<版本>-win64-setup.exe` 并运行。默认安装到
+`%LOCALAPPDATA%\Programs\CRBot`，无需管理员权限；提供开始菜单快捷方式、可选桌面快捷方式，
+可在 Windows「已安装的应用」中卸载。同一安装位置再次运行安装程序即可更新，卸载保留运行时日志和截图。
+
+本地打包需要 [Inno Setup 6.3+](https://jrsoftware.org/isinfo.php)；脚本会查找 `ISCC.exe`，
+也可用 `-IsccPath 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'` 指定。
 
 ```powershell
 # Windows PowerShell 或 pwsh 都行
@@ -156,20 +163,20 @@ powershell -File tools\package.ps1 -SkipBuild -BuildDir .\build-release
 脚本会自己找 `vcvars64.bat` 和 CLion 自带的 cmake+ninja，构建 `RelWithDebInfo`，输出：
 
 ```
-dist\CRBot-0.1.0(1)-win64\
-    CRbot.exe
-    assets\templates\btn_*.png      ← 4 个模板
-    assets\README.md
-    docs\圣水识别方案.md
-    README.md  CHANGELOG.md  VERSION  build-info.json
-dist\CRBot-0.1.0(1)-win64.zip
-dist\CRBot-0.1.0(1)-win64.zip.sha256
+dist\CRBot-0.1.0(1)-win64-setup.exe
+dist\CRBot-0.1.0(1)-win64-setup.exe.sha256
 ```
 
 正式版本号只写在 `VERSION` 文件里；Build 号由构建过程自动产生。
 包名、程序显示版本与 `build-info.json` 使用同一份构建元数据。
+安装程序包含 `CRbot.exe`、模板、文档、许可证和构建信息；MSVC 使用静态 C/C++ 运行库，
+运行 CRBot 无需另装 Visual C++ Redistributable。安装程序目前未配置 Authenticode 签名。
 
-## 打包 macOS 版
+## macOS DMG 安装包
+
+从 Releases 下载适合机器架构的 `.dmg`，打开后将 `CRBot.app` 拖入 `Applications`，
+再从「应用程序」启动。更新前先退出 CRBot，替换旧应用后推出磁盘映像。
+DMG 内的 `CLI` 是可选终端版；使用时将整个 `CLI` 文件夹复制到可写目录，再运行 `./CRbot`。
 
 ```bash
 tools/package_macos.sh               # 构建 Release（build-release）并打包
@@ -179,16 +186,13 @@ tools/package_macos.sh --skip-build  # 只打包已有产物
 输出：
 
 ```
-dist/CRBot-0.1.0(1)-macos-arm64/
-    CRBot.app                       # 双击运行，内含模板和许可证
-    CRbot                           # 可选终端版
-    assets/templates/btn_*.png
-    assets/README.md
-    docs/圣水识别方案.md
-    README.md  CHANGELOG.md  VERSION  build-info.json  LICENSE  THIRD_PARTY_NOTICES.md
-dist/CRBot-0.1.0(1)-macos-arm64.zip
-dist/CRBot-0.1.0(1)-macos-arm64.zip.sha256
+dist/CRBot-0.1.0(1)-macos-arm64.dmg
+dist/CRBot-0.1.0(1)-macos-arm64.dmg.sha256
 ```
+
+磁盘映像根目录包含 `CRBot.app`、指向 `/Applications` 的快捷方式、`CLI`、安装说明、
+文档、许可证和 `build-info.json`。Intel 构建对应 `macos-x86_64.dmg`。
+打包过程使用系统 `hdiutil` 创建压缩只读映像，临时安装文件位于构建目录的 `installer-stage`。
 
 脚本只做 **ad-hoc 签名**（`codesign --sign -`），没有 Apple 开发者签名和公证：
 拷到别的 Mac 上、或者从浏览器下载后，Gatekeeper 仍可能拦一次，
@@ -208,8 +212,12 @@ dist/CRBot-0.1.0(1)-macos-arm64.zip.sha256
 
 发布作业会查询推送提交对应的 PR，同时核对目标分支、合并 SHA；正式发布还核对来源是本仓库 `dev`。
 三个平台是 `windows-2022`（MSVC / x64）、`macos-15`（Apple Silicon）、`macos-15-intel`（Intel）。
-Windows 运行离线 PNG 解码、模板匹配及识别测试；macOS 还运行假 ADB 的完整桥接集成测试。
-全部平台测试及包结构/SHA256 校验通过后，才把收齐附件的 Release 草稿公开。
+Windows 运行离线 PNG 解码、模板匹配及识别测试，并使用 Inno Setup 构建真实安装程序。
+CI 在临时目录静默安装、重复安装，验证已安装文件、版本、快捷方式及卸载注册，再卸载并确认保留日志。
+本地需要在没有安装 CRBot 的临时 Windows 环境执行 `tools/smoke_windows_installer.ps1`，避免覆盖日常安装。
+macOS 还运行假 ADB 的完整桥接集成测试，并只读挂载 DMG 检查 Applications 快捷方式、
+应用签名、架构、资源与版本元数据，检查结束后自动卸载映像。
+全部平台测试及 SHA256 校验通过后，才把收齐安装包附件的 Release 草稿公开。
 
 **版本规则：**
 
@@ -221,15 +229,18 @@ Windows 运行离线 PNG 解码、模板匹配及识别测试；macOS 还运行�
   此行为遵循 [GitHub 的 run_number / run_attempt 定义](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#github-context)。
 * 预发布标题为 `1.1.0(3)`，tag 为 `v1.1.0(3)`；正式版标题为 `1.1.1`，tag 为 `v1.1.1`。
   已存在的正式版本不会被覆盖，需要先修改 `VERSION` 再发布。
-* 预发布包名示例：`CRBot-1.1.0(3)-win64.zip`、`CRBot-1.1.0(3)-macos-arm64.zip`、
-  `CRBot-1.1.0(3)-macos-x86_64.zip`。正式包使用 `CRBot-1.1.1-<平台>.zip`。
-* 每个 ZIP 附带 `.sha256`；ZIP 内的 `build-info.json` 记录版本、Build、发布通道、配置和提交 SHA。
+* 预发布包名示例：`CRBot-1.1.0(3)-win64-setup.exe`、`CRBot-1.1.0(3)-macos-arm64.dmg`、
+  `CRBot-1.1.0(3)-macos-x86_64.dmg`。正式包为 `CRBot-1.1.1-win64-setup.exe` 与
+  `CRBot-1.1.1-macos-<架构>.dmg`。
+* 每个安装包附带 `.sha256`；安装后的目录 / DMG 内的 `build-info.json` 记录版本、Build、发布通道、配置和提交 SHA。
   正式包内部仍保留 Build 用于追踪，但名称和程序显示版本不带括号。
   Release 附件显示名称保持上述格式；如果 GitHub 规范化了实际下载文件名，校验文件会同步采用返回的名称
   （[GitHub 附件命名规则](https://docs.github.com/en/rest/releases/assets#upload-a-release-asset)）。
 * 本地默认 `CRBOT_BUILD_NUMBER=AUTO`：每次构建应用时增加该构建目录的计数，保存在 `build-number.txt`；
   删除构建目录会重置本地计数。本地计数与 Actions 计数相互独立。
   `--skip-build` / `-SkipBuild` 仅按已有元数据重新打包，不增加 Build。
+* GitHub Release 附件直接提供 `.exe` / `.dmg`，不再发布 ZIP。Actions 的 artifact 下载外层由 GitHub
+  自动封装，解开后得到上述安装包及校验文件；这不改变 Release 的安装包格式。
 
 本地构建正式包：
 
@@ -243,7 +254,7 @@ pwsh -File tools\package.ps1 -Config Release -Channel stable
 
 CI 使用 `-DCRBOT_BUILD_NUMBER=<Y> -DCRBOT_RELEASE_CHANNEL=prerelease|stable` 固定同一次构建的元数据。
 macOS 的 `CFBundleShortVersionString` 保留 `X.X.X`，`CFBundleVersion` 使用整数 Build。
-Windows 的新增部分仅涉及构建版本信息与打包；SwiftUI / Apple 框架依然不会进入 Windows 目标。
+Windows 使用 MSVC 静态运行库以支持独立安装；SwiftUI / Apple 框架依然不会进入 Windows 目标。
 
 工作流提交到仓库后即可自动触发。发布作业只使用 `GITHUB_TOKEN` 的 `contents: write` 权限，无需额外 PAT；
 PR 构建作业保持只读权限。可以在 `dev` / `main` 的分支规则中把 **CI checks** 设为合并必需检查。
@@ -356,6 +367,9 @@ btn_mode_1v1.png    模式菜单「经典1对1」 每次全屏重新找（列表
 * **Windows Release**：**不弹控制台**（`NDEBUG` 下跳过 `AllocConsole`），日志只落 `crbot.log`。
   不想要文件日志就删掉 `main.cpp` 里 `start_log_tee("crbot.log")` 那一行。
 * **macOS GUI**：窗口实时显示，同时写 `~/Library/Logs/CRBot/crbot.log`。
+  macOS GUI / 终端版的日志均带本地时间毫秒级前缀，例如
+  `[2026-10-27 14:23:45.123] [DEVICE] emulator-5556 ...`。
+  时间取自日志管道收到该行首段内容的时刻，界面、复制内容与导出文件使用同一时间戳。
 
 截图走 **PNG**（约 80KB）而不是原始帧（3.7MB）：多开时瓶颈是 adb 通道，PNG 快好几倍；
 解码失败会自动退回原始帧。单帧超过 2 秒会打 `slow screenshot` 警告。

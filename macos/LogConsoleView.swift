@@ -25,36 +25,45 @@ struct LogConsoleView: View {
                     .textFieldStyle(.roundedBorder)
                 Toggle("仅异常", isOn: $store.errorsOnly).toggleStyle(.checkbox)
             }
-            ScrollViewReader { proxy in
-                ScrollView([.vertical, .horizontal]) {
-                    LazyVStack(alignment: .leading, spacing: 3) {
-                        if store.visibleLogs.isEmpty {
-                            Text(store.logs.isEmpty ? "等待日志…" : "没有匹配的日志")
-                                .foregroundStyle(.secondary).padding(6)
+            GeometryReader { geometry in
+                ScrollViewReader { proxy in
+                    ScrollView([.vertical, .horizontal]) {
+                        LazyVStack(alignment: .leading, spacing: 3) {
+                            if store.visibleLogs.isEmpty {
+                                Text(store.logs.isEmpty ? "等待日志…" : "没有匹配的日志")
+                                    .foregroundStyle(.secondary).padding(.horizontal, 12)
+                            }
+                            ForEach(store.visibleLogs) { line in
+                                Text(line.text.isEmpty ? " " : line.text)
+                                    .fixedSize(horizontal: true, vertical: true)
+                                    .foregroundStyle(line.isError ? Color.orange : Color.primary.opacity(0.85))
+                                    .textSelection(.enabled)
+                                    .padding(.horizontal, 12)
+                                    .id(line.id)
+                            }
+                            // Anchor at x = 0 so following logs keeps the row inset.
+                            Color.clear.frame(width: 1, height: 12).id("end")
                         }
-                        ForEach(store.visibleLogs) { line in
-                            Text(line.text.isEmpty ? " " : line.text)
-                                .fixedSize(horizontal: true, vertical: true)
-                                .foregroundStyle(line.isError ? Color.orange : Color.primary.opacity(0.85))
-                                .textSelection(.enabled)
-                                .id(line.id)
-                        }
-                        Color.clear.frame(height: 1).id("end")
+                        .font(.system(size: 12, design: .monospaced))
+                        // A horizontal scroll view proposes unbounded width. Keep
+                        // short lines as wide as the viewport, anchored at its left.
+                        .frame(minWidth: geometry.size.width, alignment: .leading)
+                        .padding(.top, 12)
                     }
-                    .font(.system(size: 12, design: .monospaced))
-                    .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(.separator.opacity(0.5)))
-                .onChange(of: store.logs.last?.id) { _, _ in
-                    if store.followLogs { proxy.scrollTo("end", anchor: .bottom) }
-                }
-                .onChange(of: store.followLogs) { _, follow in
-                    if follow { proxy.scrollTo("end", anchor: .bottom) }
+                    .defaultScrollAnchor(.topLeading)
+                    .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(.separator.opacity(0.5)))
+                    .onAppear {
+                        if store.followLogs { proxy.scrollTo("end", anchor: .bottomLeading) }
+                    }
+                    .onChange(of: store.visibleLogs.last?.id) { _, _ in
+                        if store.followLogs { proxy.scrollTo("end", anchor: .bottomLeading) }
+                    }
+                    .onChange(of: store.followLogs) { _, follow in
+                        if follow { proxy.scrollTo("end", anchor: .bottomLeading) }
+                    }
                 }
             }
-            Text("显示最近 2,000 行 · 完整日志持续写入文件 · 清空显示不会删除日志文件")
-                .font(.caption2).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

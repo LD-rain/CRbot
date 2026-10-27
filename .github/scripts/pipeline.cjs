@@ -6,6 +6,10 @@ const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const SHA = /^[0-9a-f]{40}$/;
 const PLATFORMS = ['win64', 'macos-arm64', 'macos-x86_64'];
 
+function packageNames(version) {
+  return PLATFORMS.map(platform => `CRBot-${version}-${platform}${platform === 'win64' ? '-setup.exe' : '.dmg'}`);
+}
+
 function versionInfo(version, build, channel) {
   if (!VERSION.test(version)) throw new Error('VERSION must contain X.X.X');
   if (!/^[1-9]\d*$/.test(String(build))) throw new Error('Build number must be a positive integer');
@@ -72,14 +76,12 @@ async function publish({github, context, core, directory, env = process.env}) {
   if ((channel === 'stable' && context.ref !== 'refs/heads/main') ||
       (channel === 'prerelease' && context.ref !== 'refs/heads/dev')) throw new Error('Release branch mismatch');
 
-  const names = PLATFORMS.flatMap(platform => {
-    const zip = `CRBot-${version}-${platform}.zip`;
-    return [zip, `${zip}.sha256`];
-  }).sort();
+  const packages = packageNames(version);
+  const names = packages.flatMap(name => [name, `${name}.sha256`]).sort();
   const actual = fs.readdirSync(directory).sort();
   if (JSON.stringify(actual) !== JSON.stringify(names)) throw new Error('All three platform packages and checksums are required');
   // Validate every byte before creating or modifying any release.
-  for (const name of names.filter(name => name.endsWith('.zip'))) {
+  for (const name of packages) {
     const digest = crypto.createHash('sha256').update(fs.readFileSync(path.join(directory, name))).digest('hex');
     if (fs.readFileSync(path.join(directory, `${name}.sha256`), 'utf8').trim() !== `${digest}  ${name}`)
       throw new Error(`Checksum mismatch: ${name}`);
@@ -106,7 +108,7 @@ async function publish({github, context, core, directory, env = process.env}) {
     release = (await github.rest.repos.createRelease({...context.repo, tag_name: tag,
       target_commitish: sha, name: version, draft: true, prerelease: channel === 'prerelease',
       body: `${marker}\n\nVersion: ${version}\n\nBuild: ${build}\n\nCommit: ${sha}\n\n` +
-        `Windows x64, macOS Apple Silicon and Intel. SHA256 checksums are included.\n\n` +
+        `Windows x64 setup executable; macOS Apple Silicon and Intel DMG installers. SHA256 checksums are included.\n\n` +
         `[Build logs](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${env.GITHUB_RUN_ID})`
     })).data;
   }
@@ -116,11 +118,12 @@ async function publish({github, context, core, directory, env = process.env}) {
     if (!names.includes(asset.label || asset.name)) throw new Error(`Unexpected draft asset: ${asset.name}`);
     await github.rest.repos.deleteReleaseAsset({...context.repo, asset_id: asset.id});
   }
-  for (const name of names.filter(name => name.endsWith('.zip'))) {
+  for (const name of packages) {
     const data = fs.readFileSync(path.join(directory, name));
+    const contentType = name.endsWith('.exe') ? 'application/vnd.microsoft.portable-executable' : 'application/x-apple-diskimage';
     const uploaded = (await github.rest.repos.uploadReleaseAsset({...context.repo,
       release_id: release.id, name, label: name, data,
-      headers: {'content-type': 'application/zip', 'content-length': data.length}})).data;
+      headers: {'content-type': contentType, 'content-length': data.length}})).data;
     // GitHub can normalize special characters in download filenames. Keep the
     // requested display label and make the checksum refer to the returned name.
     if (!uploaded.name || /[\r\n/\\]/.test(uploaded.name)) throw new Error('Invalid uploaded filename');
@@ -136,4 +139,4 @@ async function publish({github, context, core, directory, env = process.env}) {
   return release;
 }
 
-module.exports = {versionInfo, mergedRoute, prepare, publish};
+module.exports = {versionInfo, packageNames, mergedRoute, prepare, publish};

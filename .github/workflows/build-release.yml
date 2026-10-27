@@ -83,6 +83,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./tools/smoke_windows.ps1 -BuildDir build -Config Release
           ./tools/package.ps1 -SkipBuild -BuildDir build -Config Release
+      - name: Install, reinstall, and uninstall Windows package
+        if: runner.os == 'Windows'
+        timeout-minutes: 5
+        shell: pwsh
+        run: ./tools/smoke_windows_installer.ps1 -Version $env:CRBOT_CI_VERSION -BuildNumber $env:CRBOT_CI_BUILD_NUMBER
       - name: Build and test macOS
         if: runner.os == 'macOS'
         shell: bash
@@ -95,17 +100,21 @@ jobs:
           bash tools/smoke_macos.sh build
           bash tools/smoke_macos_gui.sh build
           bash tools/package_macos.sh --skip-build --build-dir=build
-      - name: Verify package names, metadata, and SHA256
+      - name: Mount DMG and verify signatures, resources, metadata, and SHA256
+        if: runner.os == 'macOS'
         shell: bash
         run: python3 tools/verify_packages.py dist --version "$CRBOT_CI_VERSION" --build-number "$CRBOT_CI_BUILD_NUMBER" --platform "${{ matrix.platform }}"
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: CRBot-${{ needs.metadata.outputs.display_version }}-${{ matrix.platform }}
           path: |
-            dist/*.zip
-            dist/*.zip.sha256
+            dist/*-setup.exe
+            dist/*-setup.exe.sha256
+            dist/*.dmg
+            dist/*.dmg.sha256
           if-no-files-found: error
           retention-days: 14
+          compression-level: 0
           overwrite: true
 
   checks:

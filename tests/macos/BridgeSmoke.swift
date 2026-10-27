@@ -58,6 +58,13 @@ struct BridgeSmoke {
         try scan()
         try check(try snapshot().devices.count == 2, "rescan doesn't duplicate")
         try wait("UTF-8 and unauthorized logs") { $0.logs.contains { $0.text.contains("请检查设备授权") } }
+        let displayedLogs = try snapshot().logs
+        let timestampPattern = #"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}\] "#
+        let persistedLogs = try String(contentsOf: root.appendingPathComponent("crbot.log"), encoding: .utf8)
+        try check(!displayedLogs.isEmpty && displayedLogs.allSatisfy {
+            $0.text.range(of: timestampPattern, options: .regularExpression) != nil
+                && persistedLogs.contains($0.text + "\n")
+        }, "GUI timestamps match the persisted log")
 
         try mode("bad-resolution")
         crbot_device_action(backend, "fake-1", 1)

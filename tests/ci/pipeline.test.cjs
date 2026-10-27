@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const {versionInfo, mergedRoute, prepare, publish} = require('../../.github/scripts/pipeline.cjs');
+const {versionInfo, packageNames, mergedRoute, prepare, publish} = require('../../.github/scripts/pipeline.cjs');
 
 const sha = 'a'.repeat(40);
 const repository = 'example/CRbot';
@@ -25,6 +25,11 @@ test('pre-release and stable naming; malformed metadata is rejected', () => {
   for (const version of ['v1.1.0', '01.1.0', '1.1', '1.1.0;exit'])
     assert.throws(() => versionInfo(version, 3, 'prerelease'));
   assert.throws(() => versionInfo('1.1.0', 0, 'stable'));
+  assert.deepEqual(packageNames('1.1.0(3)'), [
+    'CRBot-1.1.0(3)-win64-setup.exe',
+    'CRBot-1.1.0(3)-macos-arm64.dmg',
+    'CRBot-1.1.0(3)-macos-x86_64.dmg'
+  ]);
 });
 
 test('only the exact merged PR and permitted direction can publish', () => {
@@ -71,7 +76,7 @@ function releaseFixture(t, channel = 'prerelease') {
   t.after(() => fs.rmSync(directory, {recursive: true, force: true}));
   const version = channel === 'prerelease' ? '1.1.0(3)' : '1.1.1';
   for (const platform of ['win64', 'macos-arm64', 'macos-x86_64']) {
-    const name = `CRBot-${version}-${platform}.zip`;
+    const name = `CRBot-${version}-${platform}${platform === 'win64' ? '-setup.exe' : '.dmg'}`;
     const data = Buffer.from('fixture bytes');
     fs.writeFileSync(path.join(directory, name), data);
     fs.writeFileSync(path.join(directory, name + '.sha256'),
@@ -120,6 +125,11 @@ test('publish stages all three platform packages before exposing the release; re
   assert.equal(f.events.filter(e => e[0] === 'upload').length, 6);
   assert.equal(f.events.at(-1)[0], 'publish');
   assert.equal(f.events.at(-1)[1].prerelease, true);
+  for (const [, asset] of f.events.filter(e => e[0] === 'upload')) {
+    assert.equal(asset.headers['content-type'], asset.name.endsWith('.exe')
+      ? 'application/vnd.microsoft.portable-executable'
+      : asset.name.endsWith('.dmg') ? 'application/x-apple-diskimage' : 'text/plain');
+  }
   const count = f.events.length;
   await publish(f.args);
   assert.equal(f.events.length, count);
@@ -138,7 +148,7 @@ test('stable release hides build number, sets latest, and rejects version reuse'
 
 test('missing or corrupted package prevents every release mutation', async t => {
   const f = releaseFixture(t);
-  const file = path.join(f.args.directory, 'CRBot-1.1.0(3)-win64.zip');
+  const file = path.join(f.args.directory, 'CRBot-1.1.0(3)-win64-setup.exe');
   fs.writeFileSync(file, 'corrupted');
   await assert.rejects(publish(f.args), /Checksum/);
   assert.equal(f.events.length, 0);
@@ -175,8 +185,15 @@ test('GitHub filename normalization preserves labels and downloadable checksum n
   for (const [, asset] of f.events.filter(e => e[0] === 'upload')) {
     assert.ok(asset.label.includes('1.1.0(3)'));
     if (asset.name.endsWith('.sha256')) {
-      const zip = asset.name.slice(0, -'.sha256'.length).replace(/[()]/g, '.');
-      assert.ok(asset.data.toString().endsWith(`  ${zip}\n`));
+      const installer = asset.name.slice(0, -'.sha256'.length).replace(/[()]/g, '.');
+      assert.ok(asset.data.toString().endsWith(`  ${installer}\n`));
     }
   }
+});
+
+test('legacy ZIP or extra attachment prevents release publication', async t => {
+  const f = releaseFixture(t);
+  fs.writeFileSync(path.join(f.args.directory, 'CRBot-1.1.0(3)-win64.zip'), 'legacy');
+  await assert.rejects(publish(f.args), /All three/);
+  assert.equal(f.events.length, 0);
 });

@@ -41,7 +41,7 @@ struct DashboardView: View {
                     Label("\(store.runningCount) 台运行中", systemImage: "play.circle.fill")
                     Label("\(store.waitingCount) 台等待确认", systemImage: "person.crop.circle.badge.questionmark")
                     Divider()
-                    Text("要求 720 × 1280\nGPL-3.0-or-later · 不提供担保")
+                    Text("要求 720 × 1280\nGPL-3.0-or-later")
                         .font(.caption2).foregroundStyle(.secondary)
                 }.font(.caption).padding(16)
             }
@@ -73,12 +73,6 @@ struct DashboardView: View {
             .padding(22)
             .background(Color(nsColor: .windowBackgroundColor))
             .navigationTitle("运行总览")
-            .toolbar {
-                ToolbarItem {
-                    Button { store.stopAll() } label: { Label("全部停止", systemImage: "stop.circle") }
-                        .disabled(store.devices.allSatisfy { !$0.running && !$0.pending })
-                }
-            }
         }
         .disabled(store.shuttingDown)
         .overlay {
