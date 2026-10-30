@@ -26,6 +26,30 @@ function mergedRoute(pr, branch, sha, repository) {
   return null;
 }
 
+// 预发布编号只统计"已经发过版的"预发布，于是连续：1、2、3……
+// （以前直接用 run_number，而每次改动会跑两次——PR 一次、合并一次——
+//   只有合并那次发版，所以编号只会出现 1、3、5、7、9。）
+//
+// 同一次 workflow run 的重跑沿用原编号：草稿的正文里带着
+// <!-- crbot-build:<run_id>:<build>:<sha> --> 标记，先按它找回来。
+function prereleaseNumber(releases, version, runId) {
+  const marker = `<!-- crbot-build:${runId}:`;
+  for (const release of releases) {
+    if (release.body?.includes(marker)) {
+      const match = /\((\d+)\)$/.exec(release.tag_name || '');
+      if (match) return Number(match[1]);
+    }
+  }
+  const escaped = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`^v${escaped}\\((\\d+)\\)$`);
+  let highest = 0;
+  for (const release of releases) {
+    const match = pattern.exec(release.tag_name || '');
+    if (match) highest = Math.max(highest, Number(match[1]));
+  }
+  return highest + 1;
+}
+
 async function prepare({github, context, core, versionPath = 'VERSION', env = process.env,
                         sleep = ms => new Promise(resolve => setTimeout(resolve, ms))}) {
   const repository = `${context.repo.owner}/${context.repo.repo}`;
@@ -56,7 +80,15 @@ async function prepare({github, context, core, versionPath = 'VERSION', env = pr
     }
   }
   if (!SHA.test(context.sha)) throw new Error('Invalid source commit');
-  const info = versionInfo(fs.readFileSync(versionPath, 'utf8').trim(), env.GITHUB_RUN_NUMBER, channel);
+  const version = fs.readFileSync(versionPath, 'utf8').trim();
+  // CI（PR）用 run_number 标记测试包；CD（发版）用发布计数，保证 1、2、3…… 连续
+  let build = env.GITHUB_RUN_NUMBER;
+  if (shouldPublish && channel === 'prerelease') {
+    const releases = await github.paginate(github.rest.repos.listReleases,
+      {...context.repo, per_page: 100});
+    build = String(prereleaseNumber(releases, version, env.GITHUB_RUN_ID));
+  }
+  const info = versionInfo(version, build, channel);
   const outputs = {...info, build: String(shouldBuild), publish: String(shouldPublish), source_sha: context.sha};
   for (const [key, value] of Object.entries(outputs)) core.setOutput(key, value);
   core.info(shouldBuild ? `${shouldPublish ? 'CD' : 'CI'}: ${info.display_version} (${channel})`
@@ -108,7 +140,7 @@ async function publish({github, context, core, directory, env = process.env}) {
     release = (await github.rest.repos.createRelease({...context.repo, tag_name: tag,
       target_commitish: sha, name: version, draft: true, prerelease: channel === 'prerelease',
       body: `${marker}\n\nVersion: ${version}\n\nBuild: ${build}\n\nCommit: ${sha}\n\n` +
-        `Windows x64 setup executable; macOS Apple Silicon and Intel DMG installers. SHA256 checksums are included.\n\n` +
+        `Windows x64 ZIP; macOS Apple Silicon DMG; SHA256 checksums are included.\n\n` +
         `[Build logs](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${env.GITHUB_RUN_ID})`
     })).data;
   }
@@ -139,4 +171,4 @@ async function publish({github, context, core, directory, env = process.env}) {
   return release;
 }
 
-module.exports = {versionInfo, packageNames, mergedRoute, prepare, publish};
+module.exports = {versionInfo, packageNames, mergedRoute, prereleaseNumber, prepare, publish};

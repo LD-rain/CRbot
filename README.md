@@ -198,12 +198,12 @@ dist/CRBot-0.1.0(1)-macos-arm64.dmg.sha256
 
 ## CI / CD 与 Build 号
 
-工作流：`.github/workflows/build-release.yml`。Windows 与 macOS 共用一条流水线及一个 Build 计数器。
+工作流：`.github/workflows/build-release.yml`。Windows 与 macOS 共用一条流水线。
 
 | 操作 | 自动执行 | 版本显示 / Release |
 |---|---|---|
-| 任意功能分支 → `dev` 创建或更新 PR | CI：三个平台构建、测试、打包，保存 Actions artifacts | `1.1.0(3)`，不创建 Release |
-| PR 合并到 `dev` | CD：重新构建合并后的提交，全部通过后发布 | `1.1.0(4)`，GitHub **Pre-release** |
+| 任意功能分支 → `dev` 创建或更新 PR | CI：构建、测试、打包，保存 Actions artifacts | `1.1.0(12)`（run_number），不创建 Release |
+| PR 合并到 `dev` | CD：重新构建合并后的提交，全部通过后发布 | `1.1.0(4)`（发布计数），GitHub **Pre-release** |
 | 同仓库 `dev` → `main` 创建或更新 PR | 正式发布前 CI | 带 Build 号的测试包，不创建 Release |
 | 同仓库 `dev` → `main` 合并 | CD：重新构建合并后的提交，全部通过后发布 | 如 `VERSION` 为 `1.1.1`，发布 **1.1.1**，不显示 Build 号 |
 | 直接 push 到 `dev` / `main`，没有匹配的已合并 PR | 跳过构建及发布 | 不创建 Release |
@@ -219,11 +219,13 @@ macOS 还运行假 ADB 的完整桥接集成测试，并只读挂载 DMG 检查 
 **版本规则：**
 
 * `X.X.X` 从 `VERSION` 读取，发布前在 PR 内修改；不会自动增加补丁版本或向源代码分支回写提交。
-* CI / CD 的 `Y` 使用同一个工作流的 `github.run_number`，从 1 开始，每次新运行加 1。
-  一次矩阵构建的三个平台共享 `Y`；失败或取消的运行也占号，因此已发布版本的 Build 号可能不连续。
-* 重新运行同一次工作流视为重试，沿用原 Build 号。重试可补全本次发布的草稿；已发布成功则不重复发布。
-  不要将 CI/CD 拆成独立计数的工作流或更换此工作流文件来重置计数。
-  此行为遵循 [GitHub 的 run_number / run_attempt 定义](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#github-context)。
+* **发版用的 `Y` 是"发布计数"**：CD 发预发布前查询仓库里已有的同版本预发布（`vX.X.X(n)`），
+  取最大 `n` 加 1。因此 Release 的编号是连续的 `(1)`、`(2)`、`(3)`……
+  —— 以前直接用 `github.run_number`，而每次改动会跑两次（PR 一次、合并一次），
+  只有合并那次发版，于是编号只剩 1、3、5、7、9。
+* **CI（PR）构建**不发布，测试包标签用 `github.run_number`，只用于区分 Actions artifact。
+* 重新运行同一次工作流视为重试：草稿正文里带着 `<!-- crbot-build:<run_id>:<build>:<sha> -->`，
+  按它找回原编号，不会占用新号。重试可补全本次发布的草稿；已发布成功则不重复发布。
 * 预发布标题为 `1.1.0(3)`，tag 为 `v1.1.0(3)`；正式版标题为 `1.1.1`，tag 为 `v1.1.1`。
   已存在的正式版本不会被覆盖，需要先修改 `VERSION` 再发布。
 * 预发布包名示例：`CRBot-1.1.0(3)-win64.zip`、`CRBot-1.1.0(3)-macos-arm64.dmg`。
