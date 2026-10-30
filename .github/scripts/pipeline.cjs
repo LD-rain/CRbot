@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 
 const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const SHA = /^[0-9a-f]{40}$/;
-const PLATFORMS = ['win64', 'macos-arm64', 'macos-x86_64'];
+const PLATFORMS = ['win64', 'macos-arm64'];
 
 function packageNames(version) {
   return PLATFORMS.map(platform => `CRBot-${version}-${platform}${platform === 'win64' ? '-setup.exe' : '.dmg'}`);

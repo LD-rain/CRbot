@@ -27,8 +27,7 @@ test('pre-release and stable naming; malformed metadata is rejected', () => {
   assert.throws(() => versionInfo('1.1.0', 0, 'stable'));
   assert.deepEqual(packageNames('1.1.0(3)'), [
     'CRBot-1.1.0(3)-win64-setup.exe',
-    'CRBot-1.1.0(3)-macos-arm64.dmg',
-    'CRBot-1.1.0(3)-macos-x86_64.dmg'
+    'CRBot-1.1.0(3)-macos-arm64.dmg'
   ]);
 });
 
@@ -75,7 +74,7 @@ function releaseFixture(t, channel = 'prerelease') {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'crbot-release-'));
   t.after(() => fs.rmSync(directory, {recursive: true, force: true}));
   const version = channel === 'prerelease' ? '1.1.0(3)' : '1.1.1';
-  for (const platform of ['win64', 'macos-arm64', 'macos-x86_64']) {
+  for (const platform of ['win64', 'macos-arm64']) {
     const name = `CRBot-${version}-${platform}${platform === 'win64' ? '-setup.exe' : '.dmg'}`;
     const data = Buffer.from('fixture bytes');
     fs.writeFileSync(path.join(directory, name), data);
@@ -117,12 +116,12 @@ function releaseFixture(t, channel = 'prerelease') {
   return {args, events, github, releases: () => releases};
 }
 
-test('publish stages all three platform packages before exposing the release; retry is idempotent', async t => {
+test('publish stages both platform packages before exposing the release; retry is idempotent', async t => {
   const f = releaseFixture(t);
   await publish(f.args);
   assert.equal(f.events[0][1].draft, true);
   assert.equal(f.events[0][1].name, '1.1.0(3)');
-  assert.equal(f.events.filter(e => e[0] === 'upload').length, 6);
+  assert.equal(f.events.filter(e => e[0] === 'upload').length, 4);
   assert.equal(f.events.at(-1)[0], 'publish');
   assert.equal(f.events.at(-1)[1].prerelease, true);
   for (const [, asset] of f.events.filter(e => e[0] === 'upload')) {

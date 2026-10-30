@@ -61,8 +61,6 @@ jobs:
             runner: windows-2022
           - platform: macos-arm64
             runner: macos-15
-          - platform: macos-x86_64
-            runner: macos-15-intel
     env:
       CRBOT_CI_BUILD_NUMBER: ${{ needs.metadata.outputs.build_number }}
       CRBOT_CI_CHANNEL: ${{ needs.metadata.outputs.channel }}
