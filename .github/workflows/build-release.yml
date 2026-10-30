@@ -1,0 +1,165 @@
+name: CRBot CI and CD
+
+on:
+  pull_request:
+    branches: [dev, main]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  push:
+    branches: [dev, main]
+
+# CI（PR）构建用 github.run_number 给测试包编号；CD（发版）用"已发布预发布数量 + 1"，
+# 所以 Release 里的 (1)、(2)、(3)…… 是连续的。矩阵里的所有平台共享同一个号。
+# 重跑同一次工作流视为重试：沿用原来的编号，不会占用新号。
+permissions:
+  contents: read
+
+concurrency:
+  group: crbot-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  metadata:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      build: ${{ steps.metadata.outputs.build }}
+      publish: ${{ steps.metadata.outputs.publish }}
+      channel: ${{ steps.metadata.outputs.channel }}
+      version: ${{ steps.metadata.outputs.version }}
+      display_version: ${{ steps.metadata.outputs.display_version }}
+      build_number: ${{ steps.metadata.outputs.build_number }}
+      source_sha: ${{ steps.metadata.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@v6.1.0
+        with:
+          persist-credentials: false
+      - name: Test pipeline routing, versioning, and release recovery
+        run: |
+          node --test tests/ci/*.test.cjs
+          python3 -m unittest discover -s tests/ci -p 'test_*.py' -v
+      - name: Select CI or merged-PR release
+        id: metadata
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const {prepare} = require('./.github/scripts/pipeline.cjs');
+            await prepare({github, context, core});
+
+  build:
+    name: Build (${{ matrix.platform }})
+    needs: metadata
+    if: needs.metadata.outputs.build == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: win64
+            runner: windows-2022
+          - platform: macos-arm64
+            runner: macos-15
+    env:
+      CRBOT_CI_BUILD_NUMBER: ${{ needs.metadata.outputs.build_number }}
+      CRBOT_CI_CHANNEL: ${{ needs.metadata.outputs.channel }}
+      CRBOT_CI_SHA: ${{ needs.metadata.outputs.source_sha }}
+      CRBOT_CI_VERSION: ${{ needs.metadata.outputs.display_version }}
+    steps:
+      - uses: actions/checkout@v6.1.0
+        with:
+          ref: ${{ needs.metadata.outputs.source_sha }}
+          persist-credentials: false
+      - name: Build Windows with MSVC
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 "-DCRBOT_BUILD_NUMBER=$env:CRBOT_CI_BUILD_NUMBER" "-DCRBOT_RELEASE_CHANNEL=$env:CRBOT_CI_CHANNEL" "-DCRBOT_SOURCE_REVISION=$env:CRBOT_CI_SHA"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build --config Release --parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./tools/smoke_windows.ps1 -BuildDir build -Config Release
+          ./tools/package.ps1 -SkipBuild -BuildDir build -Config Release
+      - name: Verify Windows package
+        if: runner.os == 'Windows'
+        timeout-minutes: 5
+        shell: pwsh
+        run: python tools/verify_packages.py dist --version "$env:CRBOT_CI_VERSION" --build-number "$env:CRBOT_CI_BUILD_NUMBER" --platform win64
+      - name: Build and test macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCRBOT_BUILD_NUMBER="$CRBOT_CI_BUILD_NUMBER" \
+            -DCRBOT_RELEASE_CHANNEL="$CRBOT_CI_CHANNEL" \
+            -DCRBOT_SOURCE_REVISION="$CRBOT_CI_SHA"
+          cmake --build build --parallel 4
+          bash tools/smoke_macos.sh build
+          bash tools/smoke_macos_gui.sh build
+          bash tools/package_macos.sh --skip-build --build-dir=build
+      - name: Mount DMG and verify signatures, resources, metadata, and SHA256
+        if: runner.os == 'macOS'
+        shell: bash
+        run: python3 tools/verify_packages.py dist --version "$CRBOT_CI_VERSION" --build-number "$CRBOT_CI_BUILD_NUMBER" --platform "${{ matrix.platform }}"
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: CRBot-${{ needs.metadata.outputs.display_version }}-${{ matrix.platform }}
+          path: |
+            dist/*-win64.zip
+            dist/*-win64.zip.sha256
+            dist/*.dmg
+            dist/*.dmg.sha256
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+          overwrite: true
+
+  checks:
+    name: CI checks
+    if: always()
+    needs: [metadata, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      METADATA_RESULT: ${{ needs.metadata.result }}
+      BUILD_REQUESTED: ${{ needs.metadata.outputs.build }}
+      BUILD_RESULT: ${{ needs.build.result }}
+    steps:
+      - run: |
+          test "$METADATA_RESULT" = success
+          if [ "$BUILD_REQUESTED" = true ]; then test "$BUILD_RESULT" = success; fi
+
+  publish:
+    name: Publish GitHub release
+    needs: [metadata, checks]
+    if: github.event_name == 'push' && needs.metadata.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    concurrency:
+      group: release-${{ needs.metadata.outputs.display_version }}
+      cancel-in-progress: false
+    env:
+      CRBOT_RELEASE_VERSION: ${{ needs.metadata.outputs.display_version }}
+      CRBOT_RELEASE_BUILD: ${{ needs.metadata.outputs.build_number }}
+      CRBOT_RELEASE_CHANNEL: ${{ needs.metadata.outputs.channel }}
+      CRBOT_RELEASE_SHA: ${{ needs.metadata.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@v6.1.0
+        with:
+          ref: ${{ needs.metadata.outputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: CRBot-${{ needs.metadata.outputs.display_version }}-*
+          merge-multiple: true
+          path: release-assets
+      - name: Publish only after all platforms passed
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const {publish} = require('./.github/scripts/pipeline.cjs');
+            await publish({github, context, core, directory: 'release-assets'});

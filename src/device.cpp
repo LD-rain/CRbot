@@ -2,9 +2,17 @@
 #include "png_io.h"
 #include <iostream>
 
+#if defined(__APPLE__)
+Device::Device(std::string serial, bool initialize_now)
+    : serial_(std::move(serial)), adb_(serial_) {
+    if (initialize_now) initialize();
+}
+
+void Device::initialize() {
+#else
 Device::Device(std::string serial)
     : serial_(std::move(serial)), adb_(serial_) {
-
+#endif
     auto raw = adb_.screenshot_raw();
     if (raw.size() < 12) {
         throw std::runtime_error(serial_ + ": screenshot too small (" +

@@ -6,30 +6,32 @@
 #   pwsh -File tools\package.ps1 -SkipBuild -BuildDir ..\cmake-build-release
 #                                                     # 用已经构建好的目录，只打包
 #
-# 产物：dist\CRBot-<版本>-win64\ 和 dist\CRBot-<版本>-win64.zip
-# 注意：需要 MSVC。脚本会自己找 VS 的 vcvars64.bat、CLion 自带的 cmake/ninja。
+# 产物：dist\CRBot-<版本>-win64.zip 及 .sha256（绿色版，解压即用）
+# 只需要 MSVC，不需要 Inno Setup。
 
 param(
     [string]$Config = "RelWithDebInfo",
     [string]$BuildDir = "",
+    [ValidatePattern('^(AUTO|[1-9][0-9]*)$')]
+    [string]$BuildNumber = "AUTO",
+    [ValidateSet('prerelease', 'stable')]
+    [string]$Channel = "prerelease",
     [switch]$SkipBuild
 )
 
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
-$version = (Get-Content (Join-Path $root "VERSION") -Raw).Trim()
 if (-not $BuildDir) { $BuildDir = Join-Path $root "build-release" }
 $distDir = Join-Path $root "dist"
-$pkgName = "CRBot-$version-win64"
-$pkgDir = Join-Path $distDir $pkgName
+$BuildDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($BuildDir)
 
-Write-Host "==> CRBot $version ($Config)"
+Write-Host "==> CRBot ($Config)"
 Write-Host "    build dir: $BuildDir"
 
 if (-not $SkipBuild) {
     # ---- 找 cmake / ninja ----
-    $cmake = (Get-Command cmake -ErrorAction SilentlyContinue).Source
+    $cmake = (Get-Command cmake -ErrorAction SilentlyContinue | Select-Object -First 1).Source
     if (-not $cmake) {
         $cmake = Join-Path $env:LOCALAPPDATA "Programs\CLion\bin\cmake\win\x64\bin\cmake.exe"
     }
@@ -42,19 +44,25 @@ if (-not $SkipBuild) {
     }
 
     # ---- 找 MSVC 环境 ----
-    $vcvars = @(
+    $vcvars = $null
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+    if (Test-Path $vswhere) {
+        $installation = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+        if ($installation) { $vcvars = Join-Path $installation "VC\Auxiliary\Build\vcvars64.bat" }
+    }
+    if (-not $vcvars -or -not (Test-Path $vcvars)) { $vcvars = @(
         "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat",
         "C:\Program Files\Microsoft Visual Studio\17\Community\VC\Auxiliary\Build\vcvars64.bat",
         "C:\Program Files\Microsoft Visual Studio\17\Professional\VC\Auxiliary\Build\vcvars64.bat",
         "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-    ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+    ) | Where-Object { Test-Path $_ } | Select-Object -First 1 }
 
     if (-not $vcvars) {
         throw "找不到 vcvars64.bat，请先安装 Visual Studio（C++ 桌面开发）。"
     }
     Write-Host "==> MSVC: $vcvars"
 
-    $cmd = "call `"$vcvars`" >nul && `"$cmake`" -S `"$root`" -B `"$BuildDir`" -G Ninja -DCMAKE_BUILD_TYPE=$Config && `"$cmake`" --build `"$BuildDir`""
+    $cmd = "call `"$vcvars`" >nul && `"$cmake`" -S `"$root`" -B `"$BuildDir`" -G Ninja -DCMAKE_BUILD_TYPE=$Config -DCRBOT_BUILD_NUMBER=$BuildNumber -DCRBOT_RELEASE_CHANNEL=$Channel && `"$cmake`" --build `"$BuildDir`""
     cmd /c $cmd
     if ($LASTEXITCODE -ne 0) { throw "构建失败（exit $LASTEXITCODE）" }
 } else {
@@ -62,7 +70,23 @@ if (-not $SkipBuild) {
 }
 
 # ---- 打包 ----
+$metadataPath = Join-Path $BuildDir "build-info.json"
+if (-not (Test-Path $metadataPath)) { throw "没有构建元数据 $metadataPath，请先重新构建" }
+$metadata = Get-Content $metadataPath -Raw | ConvertFrom-Json
+$version = $metadata.version
+if ($version -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' -or
+    "$($metadata.build_number)" -notmatch '^[1-9][0-9]*$') { throw "非法版本元数据" }
+if ($metadata.configuration -ne $Config) { throw "构建配置为 $($metadata.configuration)，请传入对应的 -Config" }
+switch ($metadata.channel) {
+    'prerelease' { $expectedVersion = "$version($($metadata.build_number))" }
+    'stable' { $expectedVersion = $version }
+    default { throw "非法发布通道" }
+}
+if ($metadata.display_version -ne $expectedVersion) { throw "构建版本不一致" }
+$pkgName = "CRBot-$expectedVersion-win64"
+$pkgDir = Join-Path $BuildDir "package-stage\$pkgName"
 $exe = Join-Path $BuildDir "CRbot.exe"
+if (-not (Test-Path $exe)) { $exe = Join-Path $BuildDir "$Config/CRbot.exe" }
 if (-not (Test-Path $exe)) { throw "没有找到 $exe（先构建，或用 -BuildDir 指到构建目录）" }
 
 if (Test-Path $pkgDir) { Remove-Item $pkgDir -Recurse -Force }
@@ -75,17 +99,23 @@ $pkgAssets = Join-Path $pkgDir "assets"
 New-Item -ItemType Directory -Force -Path $pkgAssets | Out-Null
 Copy-Item (Join-Path $root "assets\templates") $pkgAssets -Recurse
 Copy-Item (Join-Path $root "assets\README.md") $pkgAssets
-Copy-Item (Join-Path $root "README.md"), (Join-Path $root "CHANGELOG.md"), (Join-Path $root "VERSION") $pkgDir
+Copy-Item (Join-Path $root "README.md"), (Join-Path $root "CHANGELOG.md"), $metadataPath $pkgDir
+[System.IO.File]::WriteAllText((Join-Path $pkgDir "VERSION"), "$version`n", [System.Text.UTF8Encoding]::new($false))
 # GPL-3.0 要求分发二进制时随附许可证与第三方声明
 Copy-Item (Join-Path $root "LICENSE"), (Join-Path $root "THIRD_PARTY_NOTICES.md") $pkgDir
 New-Item -ItemType Directory -Force -Path (Join-Path $pkgDir "docs") | Out-Null
 Copy-Item (Join-Path $root "docs\圣水识别方案.md") (Join-Path $pkgDir "docs")
 
-$zip = "$pkgDir.zip"
-if (Test-Path $zip) { Remove-Item $zip -Force }
-Compress-Archive -Path $pkgDir -DestinationPath $zip
+$archiveName = "$pkgName.zip"
+$archive = Join-Path $distDir $archiveName
+New-Item -ItemType Directory -Force -Path $distDir | Out-Null
+if (Test-Path $archive) { Remove-Item $archive -Force }
+if (Test-Path "$archive.sha256") { Remove-Item "$archive.sha256" -Force }
+Compress-Archive -Path $pkgDir -DestinationPath $archive -CompressionLevel Optimal
+if (-not (Test-Path $archive)) { throw "打包失败：没有生成 $archive" }
+$hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+[System.IO.File]::WriteAllText("$archive.sha256", "$hash  $archiveName`n", [System.Text.UTF8Encoding]::new($false))
 
 Write-Host ""
 Write-Host "==> 完成"
-Write-Host "    目录: $pkgDir"
-Write-Host "    压缩包: $zip"
+Write-Host "    压缩包: $archive"

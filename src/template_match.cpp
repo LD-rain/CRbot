@@ -13,10 +13,13 @@ inline int luma(const uint8_t* p) {
     return (p[0] * 76 + p[1] * 150 + p[2] * 29) >> 8;
 }
 
-// 归一化相关系数（对亮度/对比度变化不敏感）
+// 归一化相关系数（对亮度/对比度变化不敏感）。
+// 掩膜里的像素直接跳过：动态文字 / 红点角标不影响分数。
 double ncc_at(const Image& img, const Template& tpl, int ox, int oy, int step) {
     const int tw = tpl.width(), th = tpl.height();
     const auto& g = tpl.gray();
+    const auto& mask = tpl.mask();
+    const bool has_mask = !mask.empty();
 
     double ss = 0, ss2 = 0, st = 0, st2 = 0, sst = 0;
     int n = 0;
@@ -25,6 +28,7 @@ double ncc_at(const Image& img, const Template& tpl, int ox, int oy, int step) {
         if (!row) return 0.0;
         const int trow = y * tw;
         for (int x = 0; x < tw; x += step) {
+            if (has_mask && mask[trow + x] == 0) continue;
             const double s = luma(row + x * 4);
             const double t = g[trow + x];
             ss += s;
@@ -64,7 +68,56 @@ Template Template::from_image(const Image& img) {
 Template Template::load(const std::filesystem::path& png, std::string* err) {
     Image img;
     if (!load_png(png, img, err)) return {};
-    return from_image(img);
+    Template t = from_image(img);
+
+    // 可选的掩膜：<png>.mask，每行 "x y w h"（模板坐标）
+    std::error_code ec;
+    std::filesystem::path mask_path = png;
+    mask_path += ".mask";
+    if (std::filesystem::is_regular_file(mask_path, ec)) {
+        std::FILE* f = std::fopen(mask_path.string().c_str(), "rb");
+        if (f) {
+            char line[128];
+            int rects = 0;
+            while (std::fgets(line, sizeof(line), f)) {
+                const char* p = line;
+                while (*p == ' ' || *p == '\t') ++p;
+                if (*p == '#' || *p == '\n' || *p == '\r' || *p == '\0') continue;
+                int x = 0, y = 0, w = 0, h = 0;
+                if (std::sscanf(p, "%d %d %d %d", &x, &y, &w, &h) == 4) {
+                    t.add_mask_rect(Rect{x, y, w, h});
+                    ++rects;
+                }
+            }
+            std::fclose(f);
+            std::fprintf(stderr, "[TPL] %s mask: %d rect(s), %.0f%% pixels ignored\n",
+                         png.filename().string().c_str(), rects, t.masked_ratio() * 100.0);
+        }
+    }
+    return t;
+}
+
+void Template::add_mask_rect(const Rect& r) {
+    if (w_ <= 0 || h_ <= 0) return;
+    if (mask_.empty()) mask_.assign(static_cast<size_t>(w_) * h_, 1);
+    const int x0 = std::max(0, r.x);
+    const int y0 = std::max(0, r.y);
+    const int x1 = std::min(w_, r.x + r.w);
+    const int y1 = std::min(h_, r.y + r.h);
+    for (int y = y0; y < y1; ++y) {
+        for (int x = x0; x < x1; ++x) {
+            mask_[static_cast<size_t>(y) * w_ + x] = 0;
+        }
+    }
+}
+
+double Template::masked_ratio() const {
+    if (mask_.empty()) return 0.0;
+    size_t ignored = 0;
+    for (uint8_t v : mask_) {
+        if (!v) ++ignored;
+    }
+    return static_cast<double>(ignored) / static_cast<double>(mask_.size());
 }
 
 MatchResult match_template(const Image& img, const Template& tpl, Rect roi,

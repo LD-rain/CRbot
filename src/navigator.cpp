@@ -2,8 +2,10 @@
 
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <iostream>
 #include <thread>
+#include <utility>
 
 namespace {
 
@@ -14,11 +16,35 @@ long long elapsed_ms(std::chrono::steady_clock::time_point t) {
                std::chrono::steady_clock::now() - t).count();
 }
 
+inline int luma8(const uint8_t* p) { return (p[0] * 76 + p[1] * 150 + p[2] * 29) >> 8; }
+
+// 两帧的粗略差异（0~255，灰度平均绝对差）。
+// 只看模式列表会占据的区域，避免背景里的轻微动画影响判断。
+double frame_diff(const Image& a, const Image& b) {
+    if (a.empty() || b.empty() || a.width() != b.width() || a.height() != b.height()) {
+        return 255.0;
+    }
+    long long sum = 0;
+    int n = 0;
+    for (int y = 160; y < a.height() - 160; y += 8) {
+        for (int x = 16; x < a.width() - 16; x += 8) {
+            const uint8_t* pa = a.at(x, y);
+            const uint8_t* pb = b.at(x, y);
+            if (!pa || !pb) continue;
+            sum += std::abs(luma8(pa) - luma8(pb));
+            ++n;
+        }
+    }
+    return n ? static_cast<double>(sum) / n : 255.0;
+}
+
 // 阈值：模板是从当前版本截的，正常命中在 0.9 以上；
 // 0.72 是为了容忍闪光动画和抗锯齿差异。
 constexpr double kMenuScore = 0.72;
 constexpr double kOkScore = 0.70;
 constexpr double kModeScore = 0.80;
+// 模式图标带掩膜（忽略红点角标），两种状态应该都很高；给一点余量
+constexpr double kModeIconScore = 0.82;
 
 }  // namespace
 
@@ -49,7 +75,38 @@ bool Navigator::at_main_menu_in(const Image& img) {
 
 bool Navigator::at_main_menu() { return at_main_menu_in(capture()); }
 
+bool Navigator::wait_until_still(int max_ms, double eps) {
+    Image prev = capture();
+    if (prev.empty()) return false;
+
+    auto start = std::chrono::steady_clock::now();
+    while (elapsed_ms(start) < max_ms) {
+        sleep_ms(150);
+        Image cur = capture();
+        if (cur.empty()) continue;
+        const double diff = frame_diff(prev, cur);
+        if (diff <= eps) return true;
+        prev = std::move(cur);
+    }
+    std::cerr << "[NAV] list still moving after " << elapsed_ms(start) << "ms" << std::endl;
+    return false;
+}
+
 bool Navigator::navigate_to_1v1() {
+    // 已经在经典1对1 就不用开菜单重选：
+    // 主界面上"当前模式"的图标就是 1v1 的盾牌图标（右上角可能带红点角标）。
+    {
+        Image img = capture();
+        if (!img.empty()) {
+            MatchResult icon = UiButtons::shared().find(img, Btn::ModeIcon, kModeIconScore);
+            if (icon.found) {
+                std::cout << "[NAV] " << device_.serial() << " already in 1v1 (mode icon "
+                          << icon.score << "), skipping mode menu" << std::endl;
+                return true;
+            }
+        }
+    }
+
     std::cout << "[NAV] " << device_.serial() << " opening mode menu..." << std::endl;
 
     // 模式菜单的开合按钮图标随当前模式变化（还会随版本改），没法做模板，
@@ -59,6 +116,11 @@ bool Navigator::navigate_to_1v1() {
         sleep_ms(900);
 
         for (int scroll = 0; scroll < 4; ++scroll) {
+            // 关键：先在列表**完全停稳**之后再截图。
+            // 以前是滑动完固定等 700ms 就截图，松手瞬间列表还在惯性上滑，
+            // 截到的是旧位置，于是点在"1v1 当时的位置"上，实际点到了下面的 2v2。
+            wait_until_still();
+
             Image img = capture();
             if (!img.empty()) {
                 MatchResult m = UiButtons::shared().find(img, Btn::Mode1v1, kModeScore);
@@ -73,9 +135,10 @@ bool Navigator::navigate_to_1v1() {
                     }
                 }
             }
-            // 没找到 / 选完没回主界面：滑动列表再看
-            device_.adb().swipe(360, 800, 360, 620, 500);
-            sleep_ms(700);
+            // 没找到 / 选完没回主界面：滑动列表再看。
+            // 用较长的 duration 慢慢拖，松手后不会带着惯性继续滑。
+            device_.adb().swipe(360, 820, 360, 640, 700);
+            sleep_ms(250);
         }
 
         tap_jitter(570, 1000);  // 关掉菜单，下一轮重开

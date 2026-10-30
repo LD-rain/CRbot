@@ -15,7 +15,11 @@ fs::path exe_assets_dir() {
     std::error_code ec;
     const std::string base = platform::exe_dir();
     if (!base.empty()) {
-        for (const char* rel : {"assets/templates", "../assets/templates",
+        for (const char* rel : {
+#if defined(__APPLE__)
+                                "../Resources/assets/templates",
+#endif
+                                "assets/templates", "../assets/templates",
                                 "../../assets/templates"}) {
             const fs::path cand = fs::path(base) / rel;
             if (fs::is_directory(cand, ec)) return cand;
@@ -33,14 +37,16 @@ fs::path exe_assets_dir() {
 // 每个按钮：一组外观模板 + 搜索范围（720x1280 实测，与模板尺寸无关）
 struct Spec {
     Btn btn;
-    const char* files[4];  // 最多 4 个外观，nullptr 结束
+    const char* files[6];  // 最多 5 个外观，nullptr 结束
     Rect roi;
 };
 
 const Spec kSpecs[] = {
-    // 主界面底部黄色「对战」：普通版 / 带"每日额外奖励"版
+    // 主界面底部那个"开始对战"的按钮，外观随版本/活动/模式变：
+    //   普通「对战」/ 带"每日额外奖励"小字 / 带皇冠计数与倒计时（掩膜掉动态数字）
+    //   / 免费模式的绿色「加入」+「免费」
     {Btn::Battle,
-     {"btn_battle.png", "btn_battle2.png", nullptr, nullptr},
+     {"btn_battle.png", "btn_battle2.png", "btn_battle3.png", "btn_join.png", nullptr},
      Rect{210, 900, 310, 220}},
 
     // 模式菜单里的「经典1对1」：位置随滚动变化 → 全屏搜
@@ -48,6 +54,10 @@ const Spec kSpecs[] = {
 
     // 结算页蓝色「确定」
     {Btn::Ok, {"btn_ok.png", nullptr, nullptr, nullptr}, Rect{255, 1040, 220, 140}},
+
+    // 主界面上显示"当前模式"的图标：命中说明已经在经典1对1。
+    // 图标尺寸小，搜索范围就限定在模式按钮附近（固定位置 570,1000 一带）。
+    {Btn::ModeIcon, {"btn_mode_icon.png", nullptr, nullptr, nullptr}, Rect{490, 920, 180, 180}},
 };
 
 }  // namespace

@@ -12,6 +12,8 @@ tmp/
 
 # 离线工具生成的中间文件
 tools/frames_elixir.csv
+__pycache__/
+*.py[cod]
 
 # IDE / 系统
 .idea/

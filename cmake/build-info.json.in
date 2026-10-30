@@ -1,0 +1,8 @@
+{
+  "version": "@CRBOT_SEMANTIC_VERSION@",
+  "build_number": @CRBOT_BUILD_NUMBER@,
+  "display_version": "@CRBOT_DISPLAY_VERSION@",
+  "channel": "@CRBOT_RELEASE_CHANNEL@",
+  "configuration": "@CRBOT_BUILD_CONFIG@",
+  "source_revision": "@CRBOT_SOURCE_REVISION@"
+}

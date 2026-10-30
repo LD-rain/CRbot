@@ -105,6 +105,9 @@ ProcResult run_process(const std::vector<std::string>& argv, int timeout_ms,
     }
     close_fd(devnull);
     close_fd(out_pipe[1]);
+    // drain() must return to the timeout/cancellation loop even when a daemon
+    // inherited the pipe, or a child wrote only a partial response.
+    ::fcntl(out_pipe[0], F_SETFL, ::fcntl(out_pipe[0], F_GETFL) | O_NONBLOCK);
 
     if (cancel) {
         std::lock_guard<std::mutex> lk(cancel->mtx);

@@ -37,6 +37,9 @@ BotRunner::~BotRunner() {
 }
 
 void BotRunner::start() {
+#if defined(__APPLE__)
+    state_.running = true;
+#endif
     thread_ = std::make_unique<std::thread>(&BotRunner::run, this);
 }
 
@@ -112,12 +115,23 @@ void BotRunner::run() {
 
     try {
         // ---- 一次性初始化：设备 → 启动游戏 → 登录 → 选经典1v1 ----
+#if defined(__APPLE__)
+        // Register cancellation before the first screenshot, which can itself hang.
+        Device device(state_.serial, false);
+#else
         Device device(state_.serial);
+#endif
         AdbLink link(adb_mtx_, adb_);
         {
             std::lock_guard<std::mutex> lk(adb_mtx_);
             adb_ = &device.adb();
+#if defined(__APPLE__)
+            if (stop_) adb_->cancel();
+#endif
         }
+#if defined(__APPLE__)
+        device.initialize();
+#endif
         state_.set_status("Device OK - " + std::to_string(device.width()) +
                           "x" + std::to_string(device.height()));
 
@@ -126,7 +140,11 @@ void BotRunner::run() {
         state_.set_status("Game launched");
 
         if (!game.wait_for_main_menu(&state_, 60, &stop_)) {
+#if defined(__APPLE__)
+            state_.set_status(stop_ ? "Stopped" : "Disconnected by user");
+#else
             state_.set_status("Disconnected by user");
+#endif
             state_.running = false;
             return;
         }
@@ -142,8 +160,13 @@ void BotRunner::run() {
             navigated = nav.navigate_to_1v1();
         }
         if (!navigated) {
+#if defined(__APPLE__)
+            state_.set_status(stop_ ? "Stopped" : "Navigation failed");
+            state_.error = !stop_;
+#else
             state_.set_status("Navigation failed");
             state_.error = true;
+#endif
             state_.running = false;
             return;
         }
@@ -220,9 +243,17 @@ void BotRunner::run() {
         }
 
     } catch (const std::exception& e) {
+#if defined(__APPLE__)
+        state_.set_status(stop_ ? "Stopped" : "ERROR: " + std::string(e.what()));
+        state_.error = !stop_;
+#else
         state_.set_status("ERROR: " + std::string(e.what()));
         state_.error = true;
+#endif
     }
 
+#if defined(__APPLE__)
+    if (stop_) state_.set_status("Stopped");
+#endif
     state_.running = false;
 }

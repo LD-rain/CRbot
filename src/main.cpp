@@ -3,6 +3,7 @@
 #include "device_state.h"
 #include "log_tee.h"
 #include "platform.h"
+#include "crbot_version.h"
 
 #if defined(_WIN32)
 #include <windows.h>

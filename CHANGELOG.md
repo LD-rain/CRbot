@@ -1,5 +1,94 @@
 # 更新日志
 
+## 未发布 — 模板校验与附件精简
+
+* `tools/verify_packages.py` 的校验清单从 4 个模板补全为 **7 个模板 + 2 个掩膜**
+  （新增 `btn_battle3` / `btn_join` / `btn_mode_icon` 及两个 `.mask`）：
+  打包漏文件会在 CI 阶段就报错，而不是等到真机上"认不出按钮"。
+* Release 附件**不再上传 `.sha256`**：校验和仍在构建产物里生成、发布前逐字节核对，
+  只是不作为附件挂在 Release 上。
+
+## 未发布 — 免费模式的「加入」按钮
+
+* 新增 `btn_join.png`（绿色「加入」+「免费」）。某些模式的开始按钮和「对战」完全不一样，
+  以前只认黄色「对战」，进了这些模式会一直以为游戏还没启动（`wait_for_main_menu` 超时）。
+  现在把它作为「对战」的又一种外观：能识别主界面，点它同样能开始对战。
+
+## 0.1.1
+
+* 预发布编号改为**连续**：以前直接取 `github.run_number`，而每次改动会跑两次
+  （PR 一次、合并一次），只有合并那次发版，所以 Release 只剩 `(1)(3)(5)(7)(9)`。
+  现在发版前查询同版本已有预发布的 `n`，取最大 + 1；同一次工作流重跑沿用原编号。
+* `VERSION` 升到 `0.1.1`。
+
+## 未发布 — 模式误点与动态按钮
+
+* **修复"选 1v1 却点到 2v2"**：`input swipe` 松手后模式列表还在惯性上滑，
+  以前滑完固定等 700ms 就截图，截到的是旧位置，于是点在"1v1 当时的位置"上，
+  实际落到下一项。现在滑动后先 `wait_until_still()`（连续两帧灰度差 < 2.5 才算停），
+  再截图匹配；swipe 的 duration 也从 500ms 放慢到 700ms，松手时基本没有惯性。
+* **已经在经典1对1 就不再开菜单**：主界面右下角显示当前模式的图标，
+  命中 `btn_mode_icon.png` 直接跳过模式菜单。
+* **模板支持掩膜（mask）**：模板旁放 `<模板>.mask`（每行 `x y w h`），
+  这些区域的像素不参与 NCC。用于"同一块 UI 但文字会变"的场景。
+* **新对战按钮**（带皇冠计数 + 倒计时）：新增 `btn_battle3.png`，
+  掩膜掉底部整条，`0/500` 涨到 500、倒计时归零都不影响匹配。
+* **模式图标红点**：`btn_mode_icon.png.mask` 忽略右上角角标，
+  有红点 / 没红点 / 角标里是几，匹配分数都一样。
+
+## 未发布 — Windows 改回绿色版 ZIP
+
+* Windows 发布格式从 Inno Setup 安装程序改回 **绿色版 ZIP**：解压即用，不写注册表、可放任意目录。
+* 移除 `packaging/windows/CRBot.iss` 与 `tools/smoke_windows_installer.ps1`，
+  `tools/package.ps1` 不再依赖 Inno Setup（只要 MSVC）。
+* CI 不再做安装/卸载验证，改为解压 ZIP 校验资源、`VERSION`、`build-info.json` 与 SHA256。
+* 产物名改为 `CRBot-<版本>-win64.zip`（原为 `-win64-setup.exe`）。
+
+## 未发布 — 只发布 Apple Silicon
+
+* 移除 macOS Intel（`x86_64`）构建：CI 矩阵、产物命名、打包校验与文档都只保留 `macos-arm64`，
+  不再提供 `macos-x86_64.dmg`。
+* Intel Mac 仍可自行构建（`-DCMAKE_OSX_ARCHITECTURES=x86_64` + `tools/package_macos.sh`），
+  只是不再随 Release 发布。
+
+## 未发布 — macOS 界面精简
+
+* macOS 日志统一添加本地时间毫秒级时间戳 `[YYYY-MM-DD HH:mm:ss.SSS]`，界面、复制及导出保持一致。
+* 移除窗口右上角的全部停止按钮、日志底部说明及侧栏“不提供担保”文字。
+* 修复日志在双向滚动区域中出现大块左侧留白的问题；自动跟随保持左对齐，保留长日志横向滚动。
+
+## 未发布 — 原生安装包
+
+* Windows 发布格式改为 Inno Setup `.exe` 安装程序，默认当前用户安装，提供快捷方式、原位更新和卸载，
+  卸载保留运行时日志与截图；MSVC 静态链接运行库，无需用户单独安装 Visual C++ Redistributable。
+* macOS 发布格式改为 `.dmg`，包含 `CRBot.app`、Applications 拖放入口及可选 `CLI` 文件夹。
+* CI 增加 Windows 安装/重复安装/卸载验证；macOS 实际挂载 DMG 验证签名、架构、模板及构建元数据。
+* CD 改为上传一个 Windows 安装程序和两个架构的 DMG，以及各自的 SHA256；不再发布 ZIP。
+  `VERSION`、Build 递增和预发布/正式版本命名规则保持不变。
+
+## 未发布 — Windows / macOS CI 与 CD
+
+* 新增统一 GitHub Actions：功能分支 PR 到 `dev` 自动 CI，合并到 `dev` 自动预发布，
+  本仓库 `dev` 合并到 `main` 自动正式发布；直接 push 不发布。
+* 构建矩阵覆盖 Windows MSVC x64、macOS Apple Silicon 与 Intel，所有测试通过才发布。
+* `VERSION` 管理 `X.X.X`，同一工作流的运行号作为跨平台共享 Build；本地应用构建自动递增本地 Build。
+  预发布命名 `X.X.X(Y)`，正式版不显示括号及 Build。
+* 打包读取实际构建的 `build-info.json`，添加 SHA256 和包结构验证；重新打包保持原 Build。
+* 发布先准备草稿和全部附件，失败重跑可继续，禁止覆盖其它构建的既有版本。
+
+## 未发布 — macOS SwiftUI GUI
+
+* 新增 macOS 14+ 原生 `CRBot.app`：设备扫描/手动连接/去重、启动/停止/重试、
+  登录超时继续等待/断开、多设备状态与全部停止，复用现有 C++ 机器人核心。
+* 新增实时日志搜索、异常筛选、自动滚动、复制、清空显示、完整导出与 Finder 定位。
+  日志和截图写入 `~/Library/Logs/CRBot/`。
+* 无设备和 ADB 异常保留可恢复的窗口；后台扫描可取消，退出时先停止所有任务。
+* CMake 同时生成 SwiftUI 应用和原终端版；打包脚本包含 `.app`、模板及许可证。
+* 仅在 macOS 修复初始化截图阶段无法取消、POSIX 管道读取可能绕过超时、日志订阅析构竞争，
+  将跨线程运行/错误标记改为原子变量；Windows 保持原有构建方式与运行行为。
+* 新增假 ADB 集成测试，覆盖连接失败恢复、设备去重、分辨率拒绝、停止/重试竞争、
+  登录等待/断开、日志和退出清理。
+
 ## 0.1.0 — 2026-10-25
 
 macOS 原生支持，外加 Windows 侧的编译修复。

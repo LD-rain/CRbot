@@ -1,4 +1,5 @@
 #include "gui_dashboard.h"
+#include "crbot_version.h"
 #include <commctrl.h>
 
 #ifndef CRBOT_VERSION_W

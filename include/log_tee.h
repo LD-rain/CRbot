@@ -9,7 +9,7 @@
 bool start_log_tee(const char* path);
 
 // 日志订阅：macOS 的终端面板把日志画在自己的滚动区里，不能直接往 stdout 写
-// （会画花界面）。设了 sink 之后，tee 就不再往控制台写，改成把原始字节交给它。
+// （会画花界面）。设了 sink 之后，tee 就不再往控制台写，改成把带时间戳的日志字节交给它。
 // 传 nullptr 恢复原样。sink 的生命周期由调用方保证，并且要能接收任意线程的调用。
 class LogSink {
 public:

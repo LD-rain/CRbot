@@ -1,4 +1,5 @@
 #include "tui_dashboard.h"
+#include "crbot_version.h"
 
 #include "platform.h"
 

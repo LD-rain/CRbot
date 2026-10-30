@@ -25,6 +25,9 @@ private:
     bool at_main_menu();                   // 内部自己抓一帧
     void save_debug_frame();               // 把当前画面存成 png，排查用
 
+    // 等画面停止变化（列表滑动的惯性结束）。返回 true = 已静止。
+    bool wait_until_still(int max_ms = 2000, double eps = 2.5);
+
     Device& device_;
     std::mt19937 rng_;
     std::uniform_real_distribution<double> jitter_{-10.0, 10.0};

@@ -6,7 +6,8 @@
 
 《皇室战争》国服（`com.tencent.tmgp.supercell.clashroyale`）自动化机器人。
 通过 ADB 驱动 **720×1280** 的模拟器 / 真机，自动循环打 1v1 对战。
-Windows 上是 Win32 窗口，macOS 上是终端面板，都显示每台设备的状态，需要时可人工介入。
+Windows 上是 Win32 窗口，macOS 上提供原生 SwiftUI 窗口和终端面板，
+都显示每台设备的状态，需要时可人工介入。
 
 ## 现在能做什么
 
@@ -55,7 +56,8 @@ cmake --build cmake-build-debug
 
 ## 编译与运行（macOS）
 
-需要 Xcode Command Line Tools（clang + macOS SDK）、CMake ≥ 3.20，以及一份 `adb`：
+GUI 需要 **macOS 14 或更高版本**、Xcode / Command Line Tools（Swift 6、clang、macOS SDK）、
+CMake ≥ 3.20，以及一份 `adb`。支持 Apple Silicon 和 Intel，默认构建当前机器架构：
 
 ```bash
 xcode-select --install                          # 没装过才需要
@@ -65,20 +67,46 @@ brew install --cask android-platform-tools      # 只装 adb，不需要整个 A
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j8
-./build/CRbot
+open build/CRBot.app               # 原生 SwiftUI 窗口，也可以在 Finder 双击
+./build/CRbot                      # 可选：原终端面板
 
-# 手边没有设备时，可以先验一遍整条链路（假 adb + 假截图，2 秒出结果）
+# 手边没有设备时，用假 adb 验证，不会操作真机
 tools/smoke_macos.sh build
+bash tools/smoke_macos_gui.sh build # GUI 桥接集成测试，包含真实的 60 秒登录超时
 ```
 
 程序按顺序找 adb：`CRBOT_ADB` 环境变量 > `PATH` > `~/Library/Android/sdk/platform-tools/adb`
-> Homebrew / MacPorts 的常见位置。找不到会直接报错并提示安装命令。
+> Homebrew / MacPorts 的常见位置。GUI 找不到 ADB 时会显示安装提示，窗口保持打开，
+安装后点击「扫描设备」即可重试。Finder 启动也会搜索 SDK 与 Homebrew 的常见目录。
+
+### SwiftUI 设备控制台
+
+* 启动后自动扫描 USB / 已连接设备与常见模拟器端口，按设备身份去重；
+  **发现设备后由用户点击「启动」开始机器人任务**。
+* 输入 `host:port` 手动连接；可以重新扫描或取消正在进行的扫描。
+* 左侧选择设备，右侧查看实时状态：登录、选模式、匹配、圣水/手牌/出牌和结算。
+* 「启动 / 重试」从连接及分辨率校验重新执行；「停止」取消当前任务；
+  工具栏「全部停止」或 `⌘.` 停止所有设备。
+* 登录等待超时时显示「继续等待 / 断开」。「断开」停止该设备的机器人，
+  保留设备行供后续重试，不执行全局 `adb kill-server`。
+* 实时日志支持搜索、异常筛选、自动滚动、复制筛选内容、清空显示、导出完整日志和 Finder 定位。
+  界面保留最近 2,000 行，文件保留本次会话完整日志；每次启动会重建日志文件。
+* 关闭窗口或 `⌘Q` 会取消扫描、停止机器人和正在执行的截图命令，再退出。
+
+GUI 日志与调试截图位于 `~/Library/Logs/CRBot/`，无需在应用包里写文件。
+终端版仍写当前工作目录。自动化测试可通过 `CRBOT_DATA_DIR` 改变 GUI 输出目录。
+扫描和机器人运行在后台线程，SwiftUI 只读取快照与提交操作请求。
+
+只需要终端版时，可配置 `-DCRBOT_BUILD_MACOS_GUI=OFF`，无需 Swift 编译器。
+GUI 每次构建一个架构；发布版固定为 Apple Silicon，即 `-DCMAKE_OSX_ARCHITECTURES=arm64`。
+SwiftUI、桥接库及相关核心调整仅在 Apple 平台启用；Windows 仍按原有方式构建
+Win32 GUI、内嵌 ADB 和 WIC 图像解码，不需要 Swift、Xcode 或 Apple 框架。
 
 和 Windows 版的差别：
 
 | | Windows | macOS |
 |---|---|---|
-| 控制界面 | Win32 窗口（按钮） | 终端面板，日志在下方实时滚动 |
+| 控制界面 | Win32 窗口（按钮） | SwiftUI 原生窗口 + 可选终端面板 |
 | adb | 内嵌 `adb.exe`，解压后使用 | 用系统 / SDK 里的 `adb` |
 | PNG 解码 | WIC | ImageIO |
 | 设备发现 | 扫 5555~5599 等模拟器端口 | 同上 + `adb devices`（USB 真机、Android Studio 模拟器） |
@@ -113,9 +141,14 @@ adb shell wm density 240
 改完用 `adb shell wm size` 确认输出 `Physical size: 720x1280`，
 否则程序会在启动时报 `resolution ... != 720x1280` 并拒绝这台设备。
 
-> Windows 的 `tools/package.ps1` 只负责打包 Windows 版；macOS 直接从 `build/` 目录运行即可。
+> Windows 的 `tools/package.ps1` 只负责打包 Windows 版；macOS 使用 `tools/package_macos.sh`。
 
-## 打包预发布版
+## Windows 绿色版 ZIP
+
+从 Releases 下载 `CRBot-<版本>-win64.zip`，解压到任意目录，双击 `CRbot.exe` 即可运行，
+无需安装、不写注册表。**不要把 exe 单独拷出来**——程序按 `<exe>\assets\templates` 找按钮模板。
+
+本地打包只需要 MSVC（不再需要 Inno Setup）：
 
 ```powershell
 # Windows PowerShell 或 pwsh 都行
@@ -128,18 +161,20 @@ powershell -File tools\package.ps1 -SkipBuild -BuildDir .\build-release
 脚本会自己找 `vcvars64.bat` 和 CLion 自带的 cmake+ninja，构建 `RelWithDebInfo`，输出：
 
 ```
-dist\CRBot-0.1.0-win64\
-    CRbot.exe
-    assets\templates\btn_*.png      ← 4 个模板
-    assets\README.md
-    docs\圣水识别方案.md
-    README.md  CHANGELOG.md  VERSION
-dist\CRBot-0.1.0-win64.zip
+dist\CRBot-0.1.0(1)-win64.zip
+dist\CRBot-0.1.0(1)-win64.zip.sha256
 ```
 
-版本号只写在 `VERSION` 文件里，CMake 和打包脚本都从它读；发新版只改那一个文件。
+正式版本号只写在 `VERSION` 文件里；Build 号由构建过程自动产生。
+包名、程序显示版本与 `build-info.json` 使用同一份构建元数据。
+ZIP 里包含 `CRbot.exe`、模板、文档、许可证和构建信息；MSVC 使用静态 C/C++ 运行库，
+运行 CRBot 无需另装 Visual C++ Redistributable。ZIP 未做代码签名。
 
-## 打包 macOS 版
+## macOS DMG 安装包
+
+从 Releases 下载适合机器架构的 `.dmg`，打开后将 `CRBot.app` 拖入 `Applications`，
+再从「应用程序」启动。更新前先退出 CRBot，替换旧应用后推出磁盘映像。
+DMG 内的 `CLI` 是可选终端版；使用时将整个 `CLI` 文件夹复制到可写目录，再运行 `./CRbot`。
 
 ```bash
 tools/package_macos.sh               # 构建 Release（build-release）并打包
@@ -149,18 +184,87 @@ tools/package_macos.sh --skip-build  # 只打包已有产物
 输出：
 
 ```
-dist/CRBot-0.1.0-macos-arm64/
-    CRbot
-    assets/templates/btn_*.png
-    assets/README.md
-    docs/圣水识别方案.md
-    README.md  CHANGELOG.md  VERSION  LICENSE  THIRD_PARTY_NOTICES.md
-dist/CRBot-0.1.0-macos-arm64.zip
+dist/CRBot-0.1.0(1)-macos-arm64.dmg
+dist/CRBot-0.1.0(1)-macos-arm64.dmg.sha256
 ```
+
+磁盘映像根目录包含 `CRBot.app`、指向 `/Applications` 的快捷方式、`CLI`、安装说明、
+文档、许可证和 `build-info.json`。发布版只提供 Apple Silicon 构建（`macos-arm64.dmg`）。
+打包过程使用系统 `hdiutil` 创建压缩只读映像，临时安装文件位于构建目录的 `installer-stage`。
 
 脚本只做 **ad-hoc 签名**（`codesign --sign -`），没有 Apple 开发者签名和公证：
 拷到别的 Mac 上、或者从浏览器下载后，Gatekeeper 仍可能拦一次，
 需要右键「打开」，或者 `xattr -dr com.apple.quarantine <目录>`。
+
+## CI / CD 与 Build 号
+
+工作流：`.github/workflows/build-release.yml`。Windows 与 macOS 共用一条流水线。
+
+| 操作 | 自动执行 | 版本显示 / Release |
+|---|---|---|
+| 任意功能分支 → `dev` 创建或更新 PR | CI：构建、测试、打包，保存 Actions artifacts | `1.1.0(12)`（run_number），不创建 Release |
+| PR 合并到 `dev` | CD：重新构建合并后的提交，全部通过后发布 | `1.1.0(4)`（发布计数），GitHub **Pre-release** |
+| 同仓库 `dev` → `main` 创建或更新 PR | 正式发布前 CI | 带 Build 号的测试包，不创建 Release |
+| 同仓库 `dev` → `main` 合并 | CD：重新构建合并后的提交，全部通过后发布 | 如 `VERSION` 为 `1.1.1`，发布 **1.1.1**，不显示 Build 号 |
+| 直接 push 到 `dev` / `main`，没有匹配的已合并 PR | 跳过构建及发布 | 不创建 Release |
+
+发布作业会查询推送提交对应的 PR，同时核对目标分支、合并 SHA；正式发布还核对来源是本仓库 `dev`。
+两个平台是 `windows-2022`（MSVC / x64）和 `macos-15`（Apple Silicon）。
+Windows 运行离线 PNG 解码、模板匹配及识别测试，并打包绿色版 ZIP。
+CI 会把 ZIP 解到临时目录，校验资源、`VERSION`、`build-info.json` 与 SHA256。
+macOS 还运行假 ADB 的完整桥接集成测试，并只读挂载 DMG 检查 Applications 快捷方式、
+应用签名、架构、资源与版本元数据，检查结束后自动卸载映像。
+全部平台测试及 SHA256 校验通过后，才把收齐安装包附件的 Release 草稿公开。
+
+**版本规则：**
+
+* `X.X.X` 从 `VERSION` 读取，发布前在 PR 内修改；不会自动增加补丁版本或向源代码分支回写提交。
+* **发版用的 `Y` 是"发布计数"**：CD 发预发布前查询仓库里已有的同版本预发布（`vX.X.X(n)`），
+  取最大 `n` 加 1。因此 Release 的编号是连续的 `(1)`、`(2)`、`(3)`……
+  —— 以前直接用 `github.run_number`，而每次改动会跑两次（PR 一次、合并一次），
+  只有合并那次发版，于是编号只剩 1、3、5、7、9。
+* **CI（PR）构建**不发布，测试包标签用 `github.run_number`，只用于区分 Actions artifact。
+* 重新运行同一次工作流视为重试：草稿正文里带着 `<!-- crbot-build:<run_id>:<build>:<sha> -->`，
+  按它找回原编号，不会占用新号。重试可补全本次发布的草稿；已发布成功则不重复发布。
+* 预发布标题为 `1.1.0(3)`，tag 为 `v1.1.0(3)`；正式版标题为 `1.1.1`，tag 为 `v1.1.1`。
+  已存在的正式版本不会被覆盖，需要先修改 `VERSION` 再发布。
+* 预发布包名示例：`CRBot-1.1.0(3)-win64.zip`、`CRBot-1.1.0(3)-macos-arm64.dmg`。
+  正式包为 `CRBot-1.1.1-win64.zip` 与 `CRBot-1.1.1-macos-arm64.dmg`。
+* 构建产物里每个包都有对应的 `.sha256`，发布前用它逐字节校验；**`.sha256` 不再作为 Release 附件上传**，
+  附件只有包本身。ZIP 解压后的目录 / DMG 内的 `build-info.json` 记录版本、Build、发布通道、配置和提交 SHA。
+  正式包内部仍保留 Build 用于追踪，但名称和程序显示版本不带括号。
+  Release 附件的显示名称保持上述格式；GitHub 可能规范化实际下载文件名
+  （[附件命名规则](https://docs.github.com/en/rest/releases/assets#upload-a-release-asset)），不影响发布。
+* 本地默认 `CRBOT_BUILD_NUMBER=AUTO`：每次构建应用时增加该构建目录的计数，保存在 `build-number.txt`；
+  删除构建目录会重置本地计数。本地计数与 Actions 计数相互独立。
+  `--skip-build` / `-SkipBuild` 仅按已有元数据重新打包，不增加 Build。
+* GitHub Release 附件直接提供 `.zip`（Windows）和 `.dmg`（macOS）。Actions 的 artifact 下载外层由 GitHub
+  自动封装，解开后得到包及校验文件。
+
+本地构建正式包：
+
+```bash
+tools/package_macos.sh --channel=stable
+```
+
+```powershell
+pwsh -File tools\package.ps1 -Config Release -Channel stable
+```
+
+CI 使用 `-DCRBOT_BUILD_NUMBER=<Y> -DCRBOT_RELEASE_CHANNEL=prerelease|stable` 固定同一次构建的元数据。
+macOS 的 `CFBundleShortVersionString` 保留 `X.X.X`，`CFBundleVersion` 使用整数 Build。
+Windows 使用 MSVC 静态运行库以支持独立安装；SwiftUI / Apple 框架依然不会进入 Windows 目标。
+
+工作流提交到仓库后即可自动触发。发布作业只使用 `GITHUB_TOKEN` 的 `contents: write` 权限，无需额外 PAT；
+PR 构建作业保持只读权限。可以在 `dev` / `main` 的分支规则中把 **CI checks** 设为合并必需检查。
+这里提供脚本，不会自动更改仓库分支保护规则。
+
+本地验证流水线脚本：
+
+```bash
+node --test tests/ci/*.test.cjs
+python3 -m unittest discover -s tests/ci -p 'test_*.py' -v
+```
 
 ## 离线回归
 
@@ -212,6 +316,15 @@ include/ src/
   log_tee.*        控制台 + crbot.log 双写（macOS 可挂日志订阅）
   probe_main.cpp   离线回归工具入口（圣水/手牌）
   ui_probe.cpp     离线工具：验证按钮模板
+macos/
+  CRBotApp.swift       SwiftUI 入口、菜单与退出生命周期
+  BotStore.swift       主线程可观察状态、日志文件操作
+  *View.swift          设备列表、控制面板、实时日志
+  CRBotBridge.*        C ABI 桥接、后台扫描、机器人调度、日志快照
+  Info.plist.in        macOS 应用包元数据
+tests/macos/
+  fake_adb.py          不接触真实设备的 ADB 替身
+  BridgeSmoke.swift    桥接层与核心流程集成测试
 assets/
   templates/       按钮模板（构建时复制到 exe 旁边）
   screens/         原始按钮截图（留档，补模板时用）
@@ -229,17 +342,36 @@ tools/
 ```
 btn_battle.png      主界面黄色「对战」   搜索范围 x210..520 y900..1120
 btn_battle2.png     同上，带"每日额外奖励"小字的外观
+btn_battle3.png     同上，带皇冠计数 + 倒计时的外观（掩膜掉动态数字）
+btn_join.png        同上，免费模式的绿色「加入」+「免费」
 btn_ok.png          结算页蓝色「确定」   搜索范围 x255..475 y1040..1180
 btn_mode_1v1.png    模式菜单「经典1对1」 每次全屏重新找（列表会滚动）
+btn_mode_icon.png   主界面右下角"当前模式"图标（掩膜掉红点角标）
 ```
 
-* 一个按钮可以挂**多个外观模板**，取最高分——按钮外观会随账号状态/活动/版本变化；
+* 一个按钮可以挂**多个外观模板**，取最高分——同一位置的按钮会随版本/活动/模式变化。
+  黄色「对战」、带"每日额外奖励"、带计数与倒计时、免费模式的绿色「加入」，
+  都表示"主界面已就绪，点它就是开始对战"。少了「加入」这一种，进了免费模式就会
+  一直以为游戏还没启动（`wait_for_main_menu` 超时）；
+* **掩膜（mask）**：模板旁边放同名 `.mask` 文件（每行一个 `x y w h` 矩形，# 开头是注释），
+  这些矩形里的像素**完全不参与**相关系数计算。用来对付"同一块按钮但文字会变"的情况：
+  * `btn_battle3.png.mask` 忽略底部整条（`0 84 241 57`）：
+    `0/500` 会一路涨到 500，`倒计时:1天 18小时` 会归零，两者都不该影响匹配；
+  * `btn_mode_icon.png.mask` 忽略右上角（`52 0 25 23`）：
+    红点角标会盖住这块，角标里还可能有白色数字，忽略后"有红点/没红点/数字是几"都无所谓。
+* **已经在经典1对1 就不开菜单**：主界面右下角的图标就是当前模式，命中 `btn_mode_icon.png`
+  说明已经是 1v1，直接跳过模式菜单（省一次开菜单 + 滑动，也避开了列表滚动带来的误点）；
 * 「经典1对1」**不缓存**：模式列表会滚动，位置每次都变，所以每次全屏搜索
   （粗扫步长 8，约 0.2~0.5s），找不到就滑动列表再找；
+* 滑动之后**必须等列表停稳再截图**：`input swipe` 松手后列表还会惯性上滑，
+  这时候截到的位置和真正停下后的位置不一样，照着旧位置点就会点到下一项（1v1 → 2v2）。
+  现在每次滑动后都调用 `Navigator::wait_until_still()`（连续两帧灰度差 < 2.5 才算静止），
+  并且把 swipe 的 duration 放慢到 700ms，松手时基本没有惯性；
 * 模式菜单的开合按钮图标随当前模式变、还会随版本改，没法做模板，只能按固定位置 (570,1000) 点；
-* 阈值 `0.72 / 0.70 / 0.80`，见 `src/navigator.cpp` 顶部常量；
+* 阈值 `0.72 / 0.70 / 0.80 / 0.82`，见 `src/navigator.cpp` 顶部常量；
 * 模板缺失时所有判定都会失败，日志会打 `[UI] button templates unavailable`——
-  这是唯一需要留意的前置条件。
+  这是唯一需要留意的前置条件。加载带掩膜的模板时会打
+  `[TPL] btn_battle3.png mask: 1 rect(s), 40% pixels ignored`。
 
 ## 日志与调试产物
 
@@ -249,9 +381,13 @@ btn_mode_1v1.png    模式菜单「经典1对1」 每次全屏重新找（列表
 | `crbot_debug.png` | 结算流程卡住时存的现场帧 |
 | `crbot_battle_<serial>.png` | 等对局开始超时时存的现场帧 |
 
-* **Debug**：弹控制台 + 写 `crbot.log`；
-* **Release**：**不弹控制台**（`NDEBUG` 下跳过 `AllocConsole`），日志只落 `crbot.log`。
+* **Windows Debug**：弹控制台 + 写 `crbot.log`；
+* **Windows Release**：**不弹控制台**（`NDEBUG` 下跳过 `AllocConsole`），日志只落 `crbot.log`。
   不想要文件日志就删掉 `main.cpp` 里 `start_log_tee("crbot.log")` 那一行。
+* **macOS GUI**：窗口实时显示，同时写 `~/Library/Logs/CRBot/crbot.log`。
+  macOS GUI / 终端版的日志均带本地时间毫秒级前缀，例如
+  `[2026-10-27 14:23:45.123] [DEVICE] emulator-5556 ...`。
+  时间取自日志管道收到该行首段内容的时刻，界面、复制内容与导出文件使用同一时间戳。
 
 截图走 **PNG**（约 80KB）而不是原始帧（3.7MB）：多开时瓶颈是 adb 通道，PNG 快好几倍；
 解码失败会自动退回原始帧。单帧超过 2 秒会打 `slow screenshot` 警告。
