@@ -12,7 +12,11 @@ import tempfile
 import zipfile
 
 PLATFORMS = ("win64", "macos-arm64")
-TEMPLATES = ("btn_battle.png", "btn_battle2.png", "btn_ok.png", "btn_mode_1v1.png")
+TEMPLATES = ("btn_battle.png", "btn_battle2.png", "btn_battle3.png", "btn_join.png",
+             "btn_mode_1v1.png", "btn_mode_icon.png", "btn_ok.png")
+# 动态区域被掩膜掉的模板，旁边必须有同名 .mask，否则文字一变匹配就失效
+MASKS = ("btn_battle3.png.mask", "btn_mode_icon.png.mask")
+ASSETS = TEMPLATES + MASKS
 
 
 def package_name(version, platform):
@@ -40,11 +44,11 @@ def verify_payload(root, version, build_number, platform):
     required = ["LICENSE", "THIRD_PARTY_NOTICES.md", "README.md", "CHANGELOG.md"]
     if platform == "win64":
         required.append("CRbot.exe")
-        required.extend(f"assets/templates/{item}" for item in TEMPLATES)
+        required.extend(f"assets/templates/{item}" for item in ASSETS)
     elif platform in PLATFORMS:
         required.extend(["CLI/CRbot", "CRBot.app/Contents/MacOS/CRBot", "INSTALL.txt"])
-        required.extend(f"CLI/assets/templates/{item}" for item in TEMPLATES)
-        required.extend(f"CRBot.app/Contents/Resources/assets/templates/{item}" for item in TEMPLATES)
+        required.extend(f"CLI/assets/templates/{item}" for item in ASSETS)
+        required.extend(f"CRBot.app/Contents/Resources/assets/templates/{item}" for item in ASSETS)
         required.extend(f"CRBot.app/Contents/Resources/{item}" for item in ["LICENSE", "THIRD_PARTY_NOTICES.md"])
         app = root / "CRBot.app/Contents"
         with (app / "Info.plist").open("rb") as stream:

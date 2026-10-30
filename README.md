@@ -230,15 +230,16 @@ macOS 还运行假 ADB 的完整桥接集成测试，并只读挂载 DMG 检查 
   已存在的正式版本不会被覆盖，需要先修改 `VERSION` 再发布。
 * 预发布包名示例：`CRBot-1.1.0(3)-win64.zip`、`CRBot-1.1.0(3)-macos-arm64.dmg`。
   正式包为 `CRBot-1.1.1-win64.zip` 与 `CRBot-1.1.1-macos-arm64.dmg`。
-* 每个安装包附带 `.sha256`；ZIP 解压后的目录 / DMG 内的 `build-info.json` 记录版本、Build、发布通道、配置和提交 SHA。
+* 构建产物里每个包都有对应的 `.sha256`，发布前用它逐字节校验；**`.sha256` 不再作为 Release 附件上传**，
+  附件只有包本身。ZIP 解压后的目录 / DMG 内的 `build-info.json` 记录版本、Build、发布通道、配置和提交 SHA。
   正式包内部仍保留 Build 用于追踪，但名称和程序显示版本不带括号。
-  Release 附件显示名称保持上述格式；如果 GitHub 规范化了实际下载文件名，校验文件会同步采用返回的名称
-  （[GitHub 附件命名规则](https://docs.github.com/en/rest/releases/assets#upload-a-release-asset)）。
+  Release 附件的显示名称保持上述格式；GitHub 可能规范化实际下载文件名
+  （[附件命名规则](https://docs.github.com/en/rest/releases/assets#upload-a-release-asset)），不影响发布。
 * 本地默认 `CRBOT_BUILD_NUMBER=AUTO`：每次构建应用时增加该构建目录的计数，保存在 `build-number.txt`；
   删除构建目录会重置本地计数。本地计数与 Actions 计数相互独立。
   `--skip-build` / `-SkipBuild` 仅按已有元数据重新打包，不增加 Build。
-* GitHub Release 附件直接提供 `.exe` / `.dmg`，不再发布 ZIP。Actions 的 artifact 下载外层由 GitHub
-  自动封装，解开后得到上述安装包及校验文件；这不改变 Release 的安装包格式。
+* GitHub Release 附件直接提供 `.zip`（Windows）和 `.dmg`（macOS）。Actions 的 artifact 下载外层由 GitHub
+  自动封装，解开后得到包及校验文件。
 
 本地构建正式包：
 
