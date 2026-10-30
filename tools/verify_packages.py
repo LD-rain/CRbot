@@ -10,7 +10,7 @@ import subprocess
 import sys
 import tempfile
 
-PLATFORMS = ("win64", "macos-arm64", "macos-x86_64")
+PLATFORMS = ("win64", "macos-arm64")
 TEMPLATES = ("btn_battle.png", "btn_battle2.png", "btn_ok.png", "btn_mode_1v1.png")
 
 

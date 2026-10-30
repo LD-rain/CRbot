@@ -1,5 +1,12 @@
 # 更新日志
 
+## 未发布 — 只发布 Apple Silicon
+
+* 移除 macOS Intel（`x86_64`）构建：CI 矩阵、产物命名、打包校验与文档都只保留 `macos-arm64`，
+  不再提供 `macos-x86_64.dmg`。
+* Intel Mac 仍可自行构建（`-DCMAKE_OSX_ARCHITECTURES=x86_64` + `tools/package_macos.sh`），
+  只是不再随 Release 发布。
+
 ## 未发布 — macOS 界面精简
 
 * macOS 日志统一添加本地时间毫秒级时间戳 `[YYYY-MM-DD HH:mm:ss.SSS]`，界面、复制及导出保持一致。

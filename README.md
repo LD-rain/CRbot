@@ -98,7 +98,7 @@ GUI 日志与调试截图位于 `~/Library/Logs/CRBot/`，无需在应用包里�
 扫描和机器人运行在后台线程，SwiftUI 只读取快照与提交操作请求。
 
 只需要终端版时，可配置 `-DCRBOT_BUILD_MACOS_GUI=OFF`，无需 Swift 编译器。
-GUI 每次构建一个架构，可用 `-DCMAKE_OSX_ARCHITECTURES=arm64` 或 `x86_64` 指定。
+GUI 每次构建一个架构；发布版固定为 Apple Silicon，即 `-DCMAKE_OSX_ARCHITECTURES=arm64`。
 SwiftUI、桥接库及相关核心调整仅在 Apple 平台启用；Windows 仍按原有方式构建
 Win32 GUI、内嵌 ADB 和 WIC 图像解码，不需要 Swift、Xcode 或 Apple 框架。
 
@@ -191,7 +191,7 @@ dist/CRBot-0.1.0(1)-macos-arm64.dmg.sha256
 ```
 
 磁盘映像根目录包含 `CRBot.app`、指向 `/Applications` 的快捷方式、`CLI`、安装说明、
-文档、许可证和 `build-info.json`。Intel 构建对应 `macos-x86_64.dmg`。
+文档、许可证和 `build-info.json`。发布版只提供 Apple Silicon 构建（`macos-arm64.dmg`）。
 打包过程使用系统 `hdiutil` 创建压缩只读映像，临时安装文件位于构建目录的 `installer-stage`。
 
 脚本只做 **ad-hoc 签名**（`codesign --sign -`），没有 Apple 开发者签名和公证：
@@ -211,7 +211,7 @@ dist/CRBot-0.1.0(1)-macos-arm64.dmg.sha256
 | 直接 push 到 `dev` / `main`，没有匹配的已合并 PR | 跳过构建及发布 | 不创建 Release |
 
 发布作业会查询推送提交对应的 PR，同时核对目标分支、合并 SHA；正式发布还核对来源是本仓库 `dev`。
-三个平台是 `windows-2022`（MSVC / x64）、`macos-15`（Apple Silicon）、`macos-15-intel`（Intel）。
+两个平台是 `windows-2022`（MSVC / x64）和 `macos-15`（Apple Silicon）。
 Windows 运行离线 PNG 解码、模板匹配及识别测试，并使用 Inno Setup 构建真实安装程序。
 CI 在临时目录静默安装、重复安装，验证已安装文件、版本、快捷方式及卸载注册，再卸载并确认保留日志。
 本地需要在没有安装 CRBot 的临时 Windows 环境执行 `tools/smoke_windows_installer.ps1`，避免覆盖日常安装。
@@ -229,9 +229,8 @@ macOS 还运行假 ADB 的完整桥接集成测试，并只读挂载 DMG 检查 
   此行为遵循 [GitHub 的 run_number / run_attempt 定义](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#github-context)。
 * 预发布标题为 `1.1.0(3)`，tag 为 `v1.1.0(3)`；正式版标题为 `1.1.1`，tag 为 `v1.1.1`。
   已存在的正式版本不会被覆盖，需要先修改 `VERSION` 再发布。
-* 预发布包名示例：`CRBot-1.1.0(3)-win64-setup.exe`、`CRBot-1.1.0(3)-macos-arm64.dmg`、
-  `CRBot-1.1.0(3)-macos-x86_64.dmg`。正式包为 `CRBot-1.1.1-win64-setup.exe` 与
-  `CRBot-1.1.1-macos-<架构>.dmg`。
+* 预发布包名示例：`CRBot-1.1.0(3)-win64-setup.exe`、`CRBot-1.1.0(3)-macos-arm64.dmg`。
+  正式包为 `CRBot-1.1.1-win64-setup.exe` 与 `CRBot-1.1.1-macos-arm64.dmg`。
 * 每个安装包附带 `.sha256`；安装后的目录 / DMG 内的 `build-info.json` 记录版本、Build、发布通道、配置和提交 SHA。
   正式包内部仍保留 Build 用于追踪，但名称和程序显示版本不带括号。
   Release 附件显示名称保持上述格式；如果 GitHub 规范化了实际下载文件名，校验文件会同步采用返回的名称
