@@ -146,7 +146,9 @@ test('publish stages both platform packages before exposing the release; retry i
   await publish(f.args);
   assert.equal(f.events[0][1].draft, true);
   assert.equal(f.events[0][1].name, '1.1.0(3)');
-  assert.equal(f.events.filter(e => e[0] === 'upload').length, 4);
+  // 只上传两个安装包本体；.sha256 留在构建产物里校验，不作为附件
+  assert.equal(f.events.filter(e => e[0] === 'upload').length, 2);
+  assert.ok(f.events.filter(e => e[0] === 'upload').every(([, a]) => !a.name.endsWith('.sha256')));
   assert.equal(f.events.at(-1)[0], 'publish');
   assert.equal(f.events.at(-1)[1].prerelease, true);
   for (const [, asset] of f.events.filter(e => e[0] === 'upload')) {
@@ -186,7 +188,7 @@ test('failed upload leaves a private draft that the same build can finish', asyn
   const upload = f.github.rest.repos.uploadReleaseAsset;
   let fail = true;
   f.github.rest.repos.uploadReleaseAsset = async options => {
-    if (fail && options.name.endsWith('.sha256')) throw new Error('Temporary upload error');
+    if (fail && options.name.endsWith('.dmg')) throw new Error('Temporary upload error');
     return upload(options);
   };
   await assert.rejects(publish(f.args), /Temporary/);
@@ -197,7 +199,7 @@ test('failed upload leaves a private draft that the same build can finish', asyn
   assert.equal(f.releases()[0].draft, false);
 });
 
-test('GitHub filename normalization preserves labels and downloadable checksum names', async t => {
+test('GitHub filename normalization keeps the requested label', async t => {
   const f = releaseFixture(t);
   const upload = f.github.rest.repos.uploadReleaseAsset;
   f.github.rest.repos.uploadReleaseAsset = async options => {
@@ -206,12 +208,13 @@ test('GitHub filename normalization preserves labels and downloadable checksum n
     return response;
   };
   await publish(f.args);
-  for (const [, asset] of f.events.filter(e => e[0] === 'upload')) {
+  const uploads = f.events.filter(e => e[0] === 'upload');
+  assert.equal(uploads.length, 2);
+  for (const [, asset] of uploads) {
+    // 上传时用原始名字（含括号），label 也保留原始名字；
+    // GitHub 把下载文件名规范化成 1.1.0.3. 不影响发布流程
+    assert.ok(asset.name.includes('1.1.0(3)'));
     assert.ok(asset.label.includes('1.1.0(3)'));
-    if (asset.name.endsWith('.sha256')) {
-      const installer = asset.name.slice(0, -'.sha256'.length).replace(/[()]/g, '.');
-      assert.ok(asset.data.toString().endsWith(`  ${installer}\n`));
-    }
   }
 });
 

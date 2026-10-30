@@ -140,7 +140,7 @@ async function publish({github, context, core, directory, env = process.env}) {
     release = (await github.rest.repos.createRelease({...context.repo, tag_name: tag,
       target_commitish: sha, name: version, draft: true, prerelease: channel === 'prerelease',
       body: `${marker}\n\nVersion: ${version}\n\nBuild: ${build}\n\nCommit: ${sha}\n\n` +
-        `Windows x64 ZIP; macOS Apple Silicon DMG; SHA256 checksums are included.\n\n` +
+        `Windows x64 ZIP; macOS Apple Silicon DMG. SHA256 is verified before publishing.\n\n` +
         `[Build logs](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${env.GITHUB_RUN_ID})`
     })).data;
   }
@@ -156,15 +156,10 @@ async function publish({github, context, core, directory, env = process.env}) {
     const uploaded = (await github.rest.repos.uploadReleaseAsset({...context.repo,
       release_id: release.id, name, label: name, data,
       headers: {'content-type': contentType, 'content-length': data.length}})).data;
-    // GitHub can normalize special characters in download filenames. Keep the
-    // requested display label and make the checksum refer to the returned name.
+    // GitHub can normalize special characters in download filenames.
     if (!uploaded.name || /[\r\n/\\]/.test(uploaded.name)) throw new Error('Invalid uploaded filename');
-    const digest = crypto.createHash('sha256').update(data).digest('hex');
-    const checksum = Buffer.from(`${digest}  ${uploaded.name}\n`);
-    await github.rest.repos.uploadReleaseAsset({...context.repo, release_id: release.id,
-      name: `${name}.sha256`, label: `${name}.sha256`, data: checksum,
-      headers: {'content-type': 'text/plain', 'content-length': checksum.length}});
   }
+  // .sha256 只留在构建产物里供校验，不再作为附件上传
   release = (await github.rest.repos.updateRelease({...context.repo, release_id: release.id,
     draft: false, prerelease: channel === 'prerelease', make_latest: channel === 'stable' ? 'true' : 'false'})).data;
   core.info(`Published ${version}: ${release.html_url}`);

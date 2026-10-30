@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
-from verify_packages import TEMPLATES, package_name, verify, verify_checksum, verify_payload
+from verify_packages import ASSETS, package_name, verify, verify_checksum, verify_payload
 
 
 class InstallerVerificationTests(unittest.TestCase):
@@ -32,6 +32,29 @@ class InstallerVerificationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "SHA256"):
                 verify_checksum(archive)
 
+    def test_win64_payload_requires_every_template_and_mask(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest = dict(version="1.1.0", build_number=3,
+                            display_version="1.1.0(3)", channel="prerelease")
+            for name in ["LICENSE", "THIRD_PARTY_NOTICES.md", "README.md", "CHANGELOG.md"]:
+                (root / name).write_text("fixture")
+            (root / "build-info.json").write_text(json.dumps(manifest))
+            (root / "VERSION").write_text("1.1.0")
+            (root / "CRbot.exe").write_bytes(b"exe")
+            (root / "assets/templates").mkdir(parents=True)
+            for name in ASSETS:
+                (root / "assets/templates" / name).write_bytes(b"template")
+            verify_payload(root, "1.1.0(3)", 3, "win64")
+            # 少了掩膜也要拦住：否则动态文字一变，匹配就失效
+            (root / "assets/templates/btn_mode_icon.png.mask").unlink()
+            with self.assertRaisesRegex(ValueError, "resource"):
+                verify_payload(root, "1.1.0(3)", 3, "win64")
+            (root / "assets/templates/btn_mode_icon.png.mask").write_bytes(b"template")
+            (root / "assets/templates/btn_join.png").unlink()
+            with self.assertRaisesRegex(ValueError, "resource"):
+                verify_payload(root, "1.1.0(3)", 3, "win64")
+
     def test_macos_payload_requires_install_link_resources_and_matching_bundle(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -47,7 +70,7 @@ class InstallerVerificationTests(unittest.TestCase):
                 (root / name).write_text("fixture")
             for base in [root / "CLI", app / "Resources"]:
                 (base / "assets/templates").mkdir(parents=True)
-                for name in TEMPLATES:
+                for name in ASSETS:
                     (base / "assets/templates" / name).write_bytes(b"template fixture")
             for binary in [root / "CLI/CRbot", app / "MacOS/CRBot"]:
                 binary.parent.mkdir(parents=True, exist_ok=True)
