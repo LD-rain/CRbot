@@ -1,5 +1,12 @@
 # 更新日志
 
+## 未发布 — 文档改版
+
+* README 按 [Best-README-Template](https://github.com/othneildrew/Best-README-Template) 重写：
+  徽章 + 居中标题 + 折叠目录 + 关于 / 技术栈 / 快速开始 / 使用 / 打包发布 / 路线图 / 贡献 / 许可 / 联系 / 致谢。
+* `docs/圣水识别方案.md` 加返回链接与章节目录；`assets/README.md` 补全到 7 模板 + 掩膜说明。
+* 署名更新为 **全部代码与文档由 DeepSeek 与 ChatGPT 编写**。
+
 ## 未发布 — 模板校验与附件精简
 
 * `tools/verify_packages.py` 的校验清单从 4 个模板补全为 **7 个模板 + 2 个掩膜**
