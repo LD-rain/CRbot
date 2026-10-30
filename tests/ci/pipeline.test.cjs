@@ -4,7 +4,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const {versionInfo, packageNames, mergedRoute, prepare, publish} = require('../../.github/scripts/pipeline.cjs');
+const {versionInfo, packageNames, mergedRoute, prereleaseNumber, prepare, publish} =
+  require('../../.github/scripts/pipeline.cjs');
 
 const sha = 'a'.repeat(40);
 const repository = 'example/CRbot';
@@ -52,19 +53,43 @@ test('CI builds PR merge SHA with a shared run number, never publishes', async (
   assert.equal(outputs.source_sha, sha);
 });
 
+test('prerelease build number only counts published releases, so it stays continuous', () => {
+  // 旧行为用 run_number：每次改动跑两次（PR + 合并），只有合并会发版 → 1、3、5、7、9
+  assert.equal(prereleaseNumber([], '1.1.0', '9'), 1);
+  const releases = [
+    {tag_name: 'v1.1.0(1)', body: '<!-- crbot-build:1:1:aa -->'},
+    {tag_name: 'v1.1.0(2)', body: '<!-- crbot-build:3:2:bb -->'},
+    {tag_name: 'v1.1.1(1)', body: '<!-- crbot-build:5:1:cc -->'},  // 别的版本，不参与
+    {tag_name: 'v1.0.9', body: 'stable release'},
+    {tag_name: 'v1.1.0', body: 'stable release'}
+  ];
+  assert.equal(prereleaseNumber(releases, '1.1.0', '11'), 3);  // 下一个号
+  assert.equal(prereleaseNumber(releases, '1.1.1', '11'), 2);
+  assert.equal(prereleaseNumber(releases, '1.1.0', '3'), 2);   // 同一 run 重跑：沿用原号
+  assert.equal(prereleaseNumber(releases, '2.0.0', '11'), 1);  // 新版本从 1 开始
+});
+
 test('direct push does not publish; API indexing is retried for a merged push', async () => {
   let calls = 0;
-  const github = {rest: {repos: {listPullRequestsAssociatedWithCommit: 'prs'}},
-    paginate: async () => { calls++; return []; }};
+  let merged = false;
+  const github = {
+    rest: {repos: {listPullRequestsAssociatedWithCommit: 'prs', listReleases: 'releases'}},
+    paginate: async method => {
+      if (method !== 'prs') return [];  // 还没有任何 Release
+      calls++;
+      return merged ? [pr()] : [];
+    }
+  };
   const args = {context: context(), github, core, env: {GITHUB_RUN_NUMBER: '4'}, sleep: async () => {}};
   assert.equal((await prepare(args)).publish, 'false');
   assert.equal(calls, 6);
   calls = 0;
-  github.paginate = async () => ++calls === 1 ? [] : [pr()];
+  merged = true;
   const outputs = await prepare(args);
   assert.equal(outputs.publish, 'true');
   assert.equal(outputs.channel, 'prerelease');
-  assert.equal(calls, 2);
+  assert.equal(outputs.build_number, '1');  // 发布计数，不是 run_number(4)
+  assert.equal(calls, 1);
   args.context = context('push', 'main');
   github.paginate = async () => [pr('main', 'dev')];
   assert.equal((await prepare(args)).channel, 'stable');

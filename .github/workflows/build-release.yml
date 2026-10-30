@@ -7,8 +7,9 @@ on:
   push:
     branches: [dev, main]
 
-# One workflow owns the counter for both CI and CD. Matrix jobs share a number.
-# Re-running an existing run is a retry of that build, not a new release number.
+# CI（PR）构建用 github.run_number 给测试包编号；CD（发版）用"已发布预发布数量 + 1"，
+# 所以 Release 里的 (1)、(2)、(3)…… 是连续的。矩阵里的所有平台共享同一个号。
+# 重跑同一次工作流视为重试：沿用原来的编号，不会占用新号。
 permissions:
   contents: read
 
