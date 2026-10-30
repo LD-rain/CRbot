@@ -3,7 +3,9 @@
 ## 未发布 — 文档改版
 
 * README 按 [Best-README-Template](https://github.com/othneildrew/Best-README-Template) 重写：
-  徽章 + 居中标题 + 折叠目录 + 关于 / 技术栈 / 快速开始 / 使用 / 打包发布 / 路线图 / 贡献 / 许可 / 联系 / 致谢。
+  徽章 + 居中标题 + 折叠目录 + 关于 / 快速开始 / 使用 / 版本与发布 / 路线图 / 贡献 / 许可 / 联系 / 致谢。
+* README 只讲**怎么用**（263 → 161 行）：去掉技术栈表、实现原理章节和 CI 细节，
+  原理统一收进 [设计文档](docs/圣水识别方案.md)。
 * `docs/圣水识别方案.md` 加返回链接与章节目录；`assets/README.md` 补全到 7 模板 + 掩膜说明。
 * 署名更新为 **全部代码与文档由 DeepSeek 与 ChatGPT 编写**。
 
