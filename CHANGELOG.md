@@ -1,5 +1,13 @@
 # 更新日志
 
+## 未发布 — Windows 改回绿色版 ZIP
+
+* Windows 发布格式从 Inno Setup 安装程序改回 **绿色版 ZIP**：解压即用，不写注册表、可放任意目录。
+* 移除 `packaging/windows/CRBot.iss` 与 `tools/smoke_windows_installer.ps1`，
+  `tools/package.ps1` 不再依赖 Inno Setup（只要 MSVC）。
+* CI 不再做安装/卸载验证，改为解压 ZIP 校验资源、`VERSION`、`build-info.json` 与 SHA256。
+* 产物名改为 `CRBot-<版本>-win64.zip`（原为 `-win64-setup.exe`）。
+
 ## 未发布 — 只发布 Apple Silicon
 
 * 移除 macOS Intel（`x86_64`）构建：CI 矩阵、产物命名、打包校验与文档都只保留 `macos-arm64`，

@@ -26,7 +26,7 @@ test('pre-release and stable naming; malformed metadata is rejected', () => {
     assert.throws(() => versionInfo(version, 3, 'prerelease'));
   assert.throws(() => versionInfo('1.1.0', 0, 'stable'));
   assert.deepEqual(packageNames('1.1.0(3)'), [
-    'CRBot-1.1.0(3)-win64-setup.exe',
+    'CRBot-1.1.0(3)-win64.zip',
     'CRBot-1.1.0(3)-macos-arm64.dmg'
   ]);
 });
@@ -75,7 +75,7 @@ function releaseFixture(t, channel = 'prerelease') {
   t.after(() => fs.rmSync(directory, {recursive: true, force: true}));
   const version = channel === 'prerelease' ? '1.1.0(3)' : '1.1.1';
   for (const platform of ['win64', 'macos-arm64']) {
-    const name = `CRBot-${version}-${platform}${platform === 'win64' ? '-setup.exe' : '.dmg'}`;
+    const name = `CRBot-${version}-${platform}${platform === 'win64' ? '.zip' : '.dmg'}`;
     const data = Buffer.from('fixture bytes');
     fs.writeFileSync(path.join(directory, name), data);
     fs.writeFileSync(path.join(directory, name + '.sha256'),
@@ -125,8 +125,8 @@ test('publish stages both platform packages before exposing the release; retry i
   assert.equal(f.events.at(-1)[0], 'publish');
   assert.equal(f.events.at(-1)[1].prerelease, true);
   for (const [, asset] of f.events.filter(e => e[0] === 'upload')) {
-    assert.equal(asset.headers['content-type'], asset.name.endsWith('.exe')
-      ? 'application/vnd.microsoft.portable-executable'
+    assert.equal(asset.headers['content-type'], asset.name.endsWith('.zip')
+      ? 'application/zip'
       : asset.name.endsWith('.dmg') ? 'application/x-apple-diskimage' : 'text/plain');
   }
   const count = f.events.length;
@@ -147,12 +147,12 @@ test('stable release hides build number, sets latest, and rejects version reuse'
 
 test('missing or corrupted package prevents every release mutation', async t => {
   const f = releaseFixture(t);
-  const file = path.join(f.args.directory, 'CRBot-1.1.0(3)-win64-setup.exe');
+  const file = path.join(f.args.directory, 'CRBot-1.1.0(3)-win64.zip');
   fs.writeFileSync(file, 'corrupted');
   await assert.rejects(publish(f.args), /Checksum/);
   assert.equal(f.events.length, 0);
   fs.unlinkSync(file);
-  await assert.rejects(publish(f.args), /All three/);
+  await assert.rejects(publish(f.args), /All platform/);
   assert.equal(f.events.length, 0);
 });
 
@@ -190,9 +190,10 @@ test('GitHub filename normalization preserves labels and downloadable checksum n
   }
 });
 
-test('legacy ZIP or extra attachment prevents release publication', async t => {
+test('unexpected extra attachment prevents release publication', async t => {
   const f = releaseFixture(t);
-  fs.writeFileSync(path.join(f.args.directory, 'CRBot-1.1.0(3)-win64.zip'), 'legacy');
-  await assert.rejects(publish(f.args), /All three/);
+  // 旧版 Windows 安装包（.exe）已不再发布，出现在 dist 里就必须拦下
+  fs.writeFileSync(path.join(f.args.directory, 'CRBot-1.1.0(3)-win64-setup.exe'), 'legacy installer');
+  await assert.rejects(publish(f.args), /All platform/);
   assert.equal(f.events.length, 0);
 });

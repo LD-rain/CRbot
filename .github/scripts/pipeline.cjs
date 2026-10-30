@@ -7,7 +7,7 @@ const SHA = /^[0-9a-f]{40}$/;
 const PLATFORMS = ['win64', 'macos-arm64'];
 
 function packageNames(version) {
-  return PLATFORMS.map(platform => `CRBot-${version}-${platform}${platform === 'win64' ? '-setup.exe' : '.dmg'}`);
+  return PLATFORMS.map(platform => `CRBot-${version}-${platform}${platform === 'win64' ? '.zip' : '.dmg'}`);
 }
 
 function versionInfo(version, build, channel) {
@@ -79,7 +79,7 @@ async function publish({github, context, core, directory, env = process.env}) {
   const packages = packageNames(version);
   const names = packages.flatMap(name => [name, `${name}.sha256`]).sort();
   const actual = fs.readdirSync(directory).sort();
-  if (JSON.stringify(actual) !== JSON.stringify(names)) throw new Error('All three platform packages and checksums are required');
+  if (JSON.stringify(actual) !== JSON.stringify(names)) throw new Error('All platform packages and checksums are required');
   // Validate every byte before creating or modifying any release.
   for (const name of packages) {
     const digest = crypto.createHash('sha256').update(fs.readFileSync(path.join(directory, name))).digest('hex');
@@ -120,7 +120,7 @@ async function publish({github, context, core, directory, env = process.env}) {
   }
   for (const name of packages) {
     const data = fs.readFileSync(path.join(directory, name));
-    const contentType = name.endsWith('.exe') ? 'application/vnd.microsoft.portable-executable' : 'application/x-apple-diskimage';
+    const contentType = name.endsWith('.zip') ? 'application/zip' : 'application/x-apple-diskimage';
     const uploaded = (await github.rest.repos.uploadReleaseAsset({...context.repo,
       release_id: release.id, name, label: name, data,
       headers: {'content-type': contentType, 'content-length': data.length}})).data;
