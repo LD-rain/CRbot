@@ -37,15 +37,16 @@ fs::path exe_assets_dir() {
 // 每个按钮：一组外观模板 + 搜索范围（720x1280 实测，与模板尺寸无关）
 struct Spec {
     Btn btn;
-    const char* files[4];  // 最多 4 个外观，nullptr 结束
+    const char* files[6];  // 最多 5 个外观，nullptr 结束
     Rect roi;
 };
 
 const Spec kSpecs[] = {
-    // 主界面底部黄色「对战」：
-    //   普通版 / 带"每日额外奖励"版 / 带皇冠计数与倒计时版（btn_battle3，用掩膜忽略动态数字）
+    // 主界面底部那个"开始对战"的按钮，外观随版本/活动/模式变：
+    //   普通「对战」/ 带"每日额外奖励"小字 / 带皇冠计数与倒计时（掩膜掉动态数字）
+    //   / 免费模式的绿色「加入」+「免费」
     {Btn::Battle,
-     {"btn_battle.png", "btn_battle2.png", "btn_battle3.png", nullptr},
+     {"btn_battle.png", "btn_battle2.png", "btn_battle3.png", "btn_join.png", nullptr},
      Rect{210, 900, 310, 220}},
 
     // 模式菜单里的「经典1对1」：位置随滚动变化 → 全屏搜
