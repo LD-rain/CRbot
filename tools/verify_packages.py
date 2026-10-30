@@ -9,6 +9,7 @@ import plistlib
 import subprocess
 import sys
 import tempfile
+import zipfile
 
 PLATFORMS = ("win64", "macos-arm64")
 TEMPLATES = ("btn_battle.png", "btn_battle2.png", "btn_ok.png", "btn_mode_1v1.png")
@@ -17,7 +18,7 @@ TEMPLATES = ("btn_battle.png", "btn_battle2.png", "btn_ok.png", "btn_mode_1v1.pn
 def package_name(version, platform):
     if platform not in PLATFORMS:
         raise ValueError("Unknown platform")
-    suffix = "-setup.exe" if platform == "win64" else ".dmg"
+    suffix = ".zip" if platform == "win64" else ".dmg"
     return f"CRBot-{version}-{platform}{suffix}"
 
 
@@ -75,21 +76,18 @@ def verify_checksum(archive):
         raise ValueError("SHA256 mismatch")
 
 
-def verify(directory, version, build_number, platform, payload_directory=None):
+def verify(directory, version, build_number, platform):
     archive = Path(directory).resolve() / package_name(version, platform)
     verify_checksum(archive)
     if platform == "win64":
-        # Actual install/uninstall is driven by smoke_windows_installer.ps1.
-        with archive.open("rb") as stream:
-            header = stream.read(64)
-            if len(header) != 64 or header[:2] != b"MZ":
-                raise ValueError("Not a Windows installer executable")
-            stream.seek(int.from_bytes(header[60:64], "little"))
-            if stream.read(4) != b"PE\0\0":
-                raise ValueError("Invalid Windows executable header")
-        if payload_directory is None:
-            raise ValueError("Use smoke_windows_installer.ps1 to install and verify the Windows package")
-        verify_payload(payload_directory, version, build_number, platform)
+        # 绿色版 zip：解到临时目录，检查里面那一层目录的资源
+        with tempfile.TemporaryDirectory(prefix="crbot-zip-") as temporary:
+            with zipfile.ZipFile(archive) as bundle:
+                bundle.extractall(temporary)
+            payloads = [item for item in Path(temporary).iterdir() if item.is_dir()]
+            if len(payloads) != 1:
+                raise ValueError("ZIP must contain exactly one top-level directory")
+            verify_payload(payloads[0], version, build_number, platform)
     else:
         if sys.platform != "darwin":
             raise RuntimeError("DMG verification requires macOS")
@@ -119,6 +117,5 @@ if __name__ == "__main__":
     parser.add_argument("--version", required=True)
     parser.add_argument("--build-number", type=int, required=True)
     parser.add_argument("--platform", choices=PLATFORMS, required=True)
-    parser.add_argument("--payload-dir", help="Windows installation directory created by the installer smoke test")
     args = parser.parse_args()
-    print("PASS:", verify(args.directory, args.version, args.build_number, args.platform, args.payload_dir))
+    print("PASS:", verify(args.directory, args.version, args.build_number, args.platform))

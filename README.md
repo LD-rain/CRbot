@@ -143,14 +143,12 @@ adb shell wm density 240
 
 > Windows 的 `tools/package.ps1` 只负责打包 Windows 版；macOS 使用 `tools/package_macos.sh`。
 
-## Windows 安装程序
+## Windows 绿色版 ZIP
 
-从 Releases 下载 `CRBot-<版本>-win64-setup.exe` 并运行。默认安装到
-`%LOCALAPPDATA%\Programs\CRBot`，无需管理员权限；提供开始菜单快捷方式、可选桌面快捷方式，
-可在 Windows「已安装的应用」中卸载。同一安装位置再次运行安装程序即可更新，卸载保留运行时日志和截图。
+从 Releases 下载 `CRBot-<版本>-win64.zip`，解压到任意目录，双击 `CRbot.exe` 即可运行，
+无需安装、不写注册表。**不要把 exe 单独拷出来**——程序按 `<exe>\assets\templates` 找按钮模板。
 
-本地打包需要 [Inno Setup 6.3+](https://jrsoftware.org/isinfo.php)；脚本会查找 `ISCC.exe`，
-也可用 `-IsccPath 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'` 指定。
+本地打包只需要 MSVC（不再需要 Inno Setup）：
 
 ```powershell
 # Windows PowerShell 或 pwsh 都行
@@ -163,14 +161,14 @@ powershell -File tools\package.ps1 -SkipBuild -BuildDir .\build-release
 脚本会自己找 `vcvars64.bat` 和 CLion 自带的 cmake+ninja，构建 `RelWithDebInfo`，输出：
 
 ```
-dist\CRBot-0.1.0(1)-win64-setup.exe
-dist\CRBot-0.1.0(1)-win64-setup.exe.sha256
+dist\CRBot-0.1.0(1)-win64.zip
+dist\CRBot-0.1.0(1)-win64.zip.sha256
 ```
 
 正式版本号只写在 `VERSION` 文件里；Build 号由构建过程自动产生。
 包名、程序显示版本与 `build-info.json` 使用同一份构建元数据。
-安装程序包含 `CRbot.exe`、模板、文档、许可证和构建信息；MSVC 使用静态 C/C++ 运行库，
-运行 CRBot 无需另装 Visual C++ Redistributable。安装程序目前未配置 Authenticode 签名。
+ZIP 里包含 `CRbot.exe`、模板、文档、许可证和构建信息；MSVC 使用静态 C/C++ 运行库，
+运行 CRBot 无需另装 Visual C++ Redistributable。ZIP 未做代码签名。
 
 ## macOS DMG 安装包
 
@@ -212,9 +210,8 @@ dist/CRBot-0.1.0(1)-macos-arm64.dmg.sha256
 
 发布作业会查询推送提交对应的 PR，同时核对目标分支、合并 SHA；正式发布还核对来源是本仓库 `dev`。
 两个平台是 `windows-2022`（MSVC / x64）和 `macos-15`（Apple Silicon）。
-Windows 运行离线 PNG 解码、模板匹配及识别测试，并使用 Inno Setup 构建真实安装程序。
-CI 在临时目录静默安装、重复安装，验证已安装文件、版本、快捷方式及卸载注册，再卸载并确认保留日志。
-本地需要在没有安装 CRBot 的临时 Windows 环境执行 `tools/smoke_windows_installer.ps1`，避免覆盖日常安装。
+Windows 运行离线 PNG 解码、模板匹配及识别测试，并打包绿色版 ZIP。
+CI 会把 ZIP 解到临时目录，校验资源、`VERSION`、`build-info.json` 与 SHA256。
 macOS 还运行假 ADB 的完整桥接集成测试，并只读挂载 DMG 检查 Applications 快捷方式、
 应用签名、架构、资源与版本元数据，检查结束后自动卸载映像。
 全部平台测试及 SHA256 校验通过后，才把收齐安装包附件的 Release 草稿公开。
@@ -229,9 +226,9 @@ macOS 还运行假 ADB 的完整桥接集成测试，并只读挂载 DMG 检查 
   此行为遵循 [GitHub 的 run_number / run_attempt 定义](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#github-context)。
 * 预发布标题为 `1.1.0(3)`，tag 为 `v1.1.0(3)`；正式版标题为 `1.1.1`，tag 为 `v1.1.1`。
   已存在的正式版本不会被覆盖，需要先修改 `VERSION` 再发布。
-* 预发布包名示例：`CRBot-1.1.0(3)-win64-setup.exe`、`CRBot-1.1.0(3)-macos-arm64.dmg`。
-  正式包为 `CRBot-1.1.1-win64-setup.exe` 与 `CRBot-1.1.1-macos-arm64.dmg`。
-* 每个安装包附带 `.sha256`；安装后的目录 / DMG 内的 `build-info.json` 记录版本、Build、发布通道、配置和提交 SHA。
+* 预发布包名示例：`CRBot-1.1.0(3)-win64.zip`、`CRBot-1.1.0(3)-macos-arm64.dmg`。
+  正式包为 `CRBot-1.1.1-win64.zip` 与 `CRBot-1.1.1-macos-arm64.dmg`。
+* 每个安装包附带 `.sha256`；ZIP 解压后的目录 / DMG 内的 `build-info.json` 记录版本、Build、发布通道、配置和提交 SHA。
   正式包内部仍保留 Build 用于追踪，但名称和程序显示版本不带括号。
   Release 附件显示名称保持上述格式；如果 GitHub 规范化了实际下载文件名，校验文件会同步采用返回的名称
   （[GitHub 附件命名规则](https://docs.github.com/en/rest/releases/assets#upload-a-release-asset)）。

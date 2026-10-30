@@ -6,8 +6,8 @@
 #   pwsh -File tools\package.ps1 -SkipBuild -BuildDir ..\cmake-build-release
 #                                                     # 用已经构建好的目录，只打包
 #
-# 产物：dist\CRBot-<版本>-win64-setup.exe 及 .sha256
-# 需要 MSVC 和 Inno Setup 6.3+（ISCC.exe）；支持 -IsccPath 指定编译器。
+# 产物：dist\CRBot-<版本>-win64.zip 及 .sha256（绿色版，解压即用）
+# 只需要 MSVC，不需要 Inno Setup。
 
 param(
     [string]$Config = "RelWithDebInfo",
@@ -16,7 +16,6 @@ param(
     [string]$BuildNumber = "AUTO",
     [ValidateSet('prerelease', 'stable')]
     [string]$Channel = "prerelease",
-    [string]$IsccPath = "",
     [switch]$SkipBuild
 )
 
@@ -26,20 +25,6 @@ $root = Split-Path -Parent $PSScriptRoot
 if (-not $BuildDir) { $BuildDir = Join-Path $root "build-release" }
 $distDir = Join-Path $root "dist"
 $BuildDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($BuildDir)
-
-if (-not $IsccPath) {
-    $command = Get-Command ISCC.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($command) { $IsccPath = $command.Source }
-    foreach ($base in @(${env:ProgramFiles(x86)}, $env:ProgramFiles)) {
-        if (-not $IsccPath -and $base) {
-            $candidate = Join-Path $base "Inno Setup 6\ISCC.exe"
-            if (Test-Path $candidate) { $IsccPath = $candidate }
-        }
-    }
-}
-if (-not $IsccPath -or -not (Test-Path $IsccPath)) {
-    throw "找不到 ISCC.exe，请安装 Inno Setup 6.3+ 或传入 -IsccPath"
-}
 
 Write-Host "==> CRBot ($Config)"
 Write-Host "    build dir: $BuildDir"
@@ -99,7 +84,7 @@ switch ($metadata.channel) {
 }
 if ($metadata.display_version -ne $expectedVersion) { throw "构建版本不一致" }
 $pkgName = "CRBot-$expectedVersion-win64"
-$pkgDir = Join-Path $BuildDir "installer-stage\$pkgName"
+$pkgDir = Join-Path $BuildDir "package-stage\$pkgName"
 $exe = Join-Path $BuildDir "CRbot.exe"
 if (-not (Test-Path $exe)) { $exe = Join-Path $BuildDir "$Config/CRbot.exe" }
 if (-not (Test-Path $exe)) { throw "没有找到 $exe（先构建，或用 -BuildDir 指到构建目录）" }
@@ -121,17 +106,16 @@ Copy-Item (Join-Path $root "LICENSE"), (Join-Path $root "THIRD_PARTY_NOTICES.md"
 New-Item -ItemType Directory -Force -Path (Join-Path $pkgDir "docs") | Out-Null
 Copy-Item (Join-Path $root "docs\圣水识别方案.md") (Join-Path $pkgDir "docs")
 
-$installerName = "$pkgName-setup"
-$installer = Join-Path $distDir "$installerName.exe"
+$archiveName = "$pkgName.zip"
+$archive = Join-Path $distDir $archiveName
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
-if (Test-Path $installer) { Remove-Item $installer -Force }
-if (Test-Path "$installer.sha256") { Remove-Item "$installer.sha256" -Force }
-& $IsccPath "/DPayloadDir=$pkgDir" "/DAppVersion=$version" "/DDisplayVersion=$expectedVersion" `
-    "/DInstallerDir=$distDir" "/DInstallerName=$installerName" (Join-Path $root "packaging\windows\CRBot.iss")
-if ($LASTEXITCODE -ne 0 -or -not (Test-Path $installer)) { throw "Inno Setup 编译失败" }
-$hash = (Get-FileHash -Algorithm SHA256 $installer).Hash.ToLowerInvariant()
-[System.IO.File]::WriteAllText("$installer.sha256", "$hash  $installerName.exe`n", [System.Text.UTF8Encoding]::new($false))
+if (Test-Path $archive) { Remove-Item $archive -Force }
+if (Test-Path "$archive.sha256") { Remove-Item "$archive.sha256" -Force }
+Compress-Archive -Path $pkgDir -DestinationPath $archive -CompressionLevel Optimal
+if (-not (Test-Path $archive)) { throw "打包失败：没有生成 $archive" }
+$hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+[System.IO.File]::WriteAllText("$archive.sha256", "$hash  $archiveName`n", [System.Text.UTF8Encoding]::new($false))
 
 Write-Host ""
 Write-Host "==> 完成"
-Write-Host "    安装程序: $installer"
+Write-Host "    压缩包: $archive"

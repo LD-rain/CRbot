@@ -6,6 +6,7 @@ import plistlib
 import sys
 import tempfile
 import unittest
+import zipfile
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -14,16 +15,18 @@ from verify_packages import TEMPLATES, package_name, verify, verify_checksum, ve
 
 
 class InstallerVerificationTests(unittest.TestCase):
-    def test_names_checksums_and_renamed_zip_rejection(self):
-        self.assertEqual(package_name("1.1.0(3)", "win64"), "CRBot-1.1.0(3)-win64-setup.exe")
+    def test_names_checksums_and_corrupt_zip_rejection(self):
+        self.assertEqual(package_name("1.1.0(3)", "win64"), "CRBot-1.1.0(3)-win64.zip")
         self.assertEqual(package_name("1.1.1", "macos-arm64"), "CRBot-1.1.1-macos-arm64.dmg")
         with tempfile.TemporaryDirectory() as temporary:
             archive = Path(temporary) / package_name("1.1.0(3)", "win64")
-            archive.write_bytes(b"PK" + bytes(100))
+            with zipfile.ZipFile(archive, "w") as bundle:
+                bundle.writestr("CRBot-1.1.0(3)-win64/build-info.json",
+                                json.dumps({"display_version": "9.9.9", "build_number": 3}))
             checksum = Path(str(archive) + ".sha256")
             checksum.write_text(hashlib.sha256(archive.read_bytes()).hexdigest() + "  " + archive.name)
             verify_checksum(archive)
-            with self.assertRaisesRegex(ValueError, "executable"):
+            with self.assertRaisesRegex(ValueError, "does not match"):
                 verify(temporary, "1.1.0(3)", 3, "win64")
             archive.write_bytes(b"modified")
             with self.assertRaisesRegex(ValueError, "SHA256"):
