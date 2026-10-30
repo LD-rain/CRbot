@@ -12,7 +12,6 @@
 <br />
 <div align="center">
   <a href="https://github.com/LD-rain/CRbot">
-    <img src="assets/screens/1v1_icon0.png" alt="CRBot" width="72" height="84">
   </a>
 
   <h3 align="center">CRBot</h3>
@@ -203,8 +202,6 @@ cmake --build build --parallel 8
 ## 许可证
 
 **GNU General Public License v3.0**（GPL-3.0），全文见 [LICENSE](LICENSE)。
-
-强 copyleft：可以自由使用、修改、分发，但**分发（包括只发编译好的包）时必须同样以 GPL-3.0 开放完整源码**。
 
 内嵌的 `adb` 来自 Android SDK Platform-Tools，按 Apache-2.0 分发，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
