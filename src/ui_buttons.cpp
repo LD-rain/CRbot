@@ -42,9 +42,10 @@ struct Spec {
 };
 
 const Spec kSpecs[] = {
-    // 主界面底部黄色「对战」：普通版 / 带"每日额外奖励"版
+    // 主界面底部黄色「对战」：
+    //   普通版 / 带"每日额外奖励"版 / 带皇冠计数与倒计时版（btn_battle3，用掩膜忽略动态数字）
     {Btn::Battle,
-     {"btn_battle.png", "btn_battle2.png", nullptr, nullptr},
+     {"btn_battle.png", "btn_battle2.png", "btn_battle3.png", nullptr},
      Rect{210, 900, 310, 220}},
 
     // 模式菜单里的「经典1对1」：位置随滚动变化 → 全屏搜
@@ -52,6 +53,10 @@ const Spec kSpecs[] = {
 
     // 结算页蓝色「确定」
     {Btn::Ok, {"btn_ok.png", nullptr, nullptr, nullptr}, Rect{255, 1040, 220, 140}},
+
+    // 主界面上显示"当前模式"的图标：命中说明已经在经典1对1。
+    // 图标尺寸小，搜索范围就限定在模式按钮附近（固定位置 570,1000 一带）。
+    {Btn::ModeIcon, {"btn_mode_icon.png", nullptr, nullptr, nullptr}, Rect{490, 920, 180, 180}},
 };
 
 }  // namespace

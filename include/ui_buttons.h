@@ -4,7 +4,9 @@
 #include <vector>
 
 // 需要点击的按钮。
-enum class Btn { Battle, Mode1v1, Ok };
+// ModeIcon 不是"要点"的按钮，而是主界面上显示当前模式的图标：
+// 图标是 1v1 就说明已经在经典 1 对 1，不用再开菜单重选。
+enum class Btn { Battle, Mode1v1, Ok, ModeIcon };
 
 // 点击位置一律来自模板匹配的结果（match.cx()/cy()）。
 // 同一个按钮可以挂多个模板：游戏里按钮外观会随账号状态/活动/版本变化，
@@ -26,6 +28,6 @@ private:
         Rect roi;                    // 搜索范围（固定区域，与模板尺寸无关）
     };
 
-    Entry entries_[3];
+    Entry entries_[4];
     int loaded_ = 0;
 };
